@@ -38,7 +38,7 @@ class SpottyApp(App):
         self.api = api
         self._volume = 50
         self._playlists: list = []
-        self._ready = False
+        self._connected: bool = False
 
     def compose(self) -> ComposeResult:
         yield NowPlaying(id="now-playing")
@@ -66,7 +66,7 @@ class SpottyApp(App):
 
     def _mark_ready(self) -> None:
         """Called from _connect_spotifyd when the device is up (or we give up)."""
-        self._ready = True
+        self._connected = True
         track = self._safe_api(self.api.current_track, silent=True)
         if track is not None:
             track_cache.save(track)
@@ -80,7 +80,7 @@ class SpottyApp(App):
     # ------------------------------------------------------------------
 
     def _refresh(self) -> None:
-        if not self._ready:
+        if not self._connected:
             return
         track = self._safe_api(self.api.current_track, silent=True)
         if track is not None:
@@ -97,20 +97,20 @@ class SpottyApp(App):
     # ------------------------------------------------------------------
 
     def action_play_pause(self) -> None:
-        if not self._ready:
+        if not self._connected:
             self.notify("Still connecting…", timeout=2)
             return
         self._safe_api(self.api.play_pause)
         self._refresh_soon()
 
     def action_next_track(self) -> None:
-        if not self._ready:
+        if not self._connected:
             return
         self._safe_api(self.api.next_track)
         self._refresh_soon()
 
     def action_previous_track(self) -> None:
-        if not self._ready:
+        if not self._connected:
             return
         self._safe_api(self.api.previous_track)
         self._refresh_soon()
