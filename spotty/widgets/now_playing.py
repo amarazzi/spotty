@@ -137,6 +137,8 @@ class NowPlaying(Widget):
             artist_lbl.update("")
             album_lbl.update("")
             self._is_playing = False
+            self._duration_ms = 0
+            self._progress_ms = 0
             return
 
         self._progress_ms = track.progress_ms

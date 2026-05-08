@@ -54,7 +54,7 @@ class SpottyApp(App):
     # ------------------------------------------------------------------
 
     def _refresh(self) -> None:
-        track = self._safe_api(self.api.current_track)
+        track = self._safe_api(self.api.current_track, silent=True)
         self.query_one(NowPlaying).update_track(track)
 
     def _refresh_soon(self) -> None:
@@ -120,7 +120,7 @@ class SpottyApp(App):
     # Error handling
     # ------------------------------------------------------------------
 
-    def _safe_api(self, fn):
+    def _safe_api(self, fn, *, silent: bool = False):
         try:
             return fn()
         except SpotifyException as e:
@@ -131,22 +131,25 @@ class SpottyApp(App):
                         return fn()
                     except SpotifyException:
                         pass
-                self.notify(
-                    "No device found — open Spotify on any device",
-                    severity="warning",
-                    timeout=5,
-                )
-            elif "403" in msg:
-                self.notify("Spotify Premium required for playback control", severity="error", timeout=4)
-            else:
-                self.notify(f"Spotify error: {e}", severity="error", timeout=4)
+                if not silent:
+                    self.notify(
+                        "No device found — open Spotify on any device",
+                        severity="warning",
+                        timeout=5,
+                    )
+            elif not silent:
+                if "403" in msg:
+                    self.notify("Spotify Premium required for playback control", severity="error", timeout=4)
+                else:
+                    self.notify(f"Spotify error: {e}", severity="error", timeout=4)
             return None
         except requests.exceptions.ReadTimeout:
             return None
         except requests.exceptions.ConnectionError:
             return None
         except Exception as e:
-            self.notify(f"Network error: {e}", severity="warning", timeout=4)
+            if not silent:
+                self.notify(f"Network error: {e}", severity="warning", timeout=4)
             return None
 
     def _activate_spotifyd_if_running(self) -> None:
