@@ -10,7 +10,7 @@ from pathlib import Path
 
 DEVICE_NAME = "spotty"
 _CACHE_DIR = Path.home() / ".cache" / "spotifyd"
-_CREDENTIALS = _CACHE_DIR / "credentials.json"
+_CREDENTIALS = _CACHE_DIR / "oauth" / "credentials.json"
 
 
 def is_installed() -> bool:
