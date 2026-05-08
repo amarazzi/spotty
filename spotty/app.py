@@ -11,6 +11,7 @@ from textual.binding import Binding
 from spotty.api import Album, SpotifyAPI
 from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installed as _spotifyd_installed
 from spotty import track_cache
+from spotty.widgets.album_tracks_overlay import AlbumTracksOverlay
 from spotty.widgets.home_overlay import HomeOverlay
 from spotty.widgets.now_playing import NowPlaying
 from spotty.widgets.playlists_overlay import PlaylistsOverlay
@@ -138,18 +139,29 @@ class SpottyApp(App):
     # ------------------------------------------------------------------
 
     def action_search(self) -> None:
-        def on_result(result) -> None:
+        def on_search_result(result) -> None:
             if not result:
                 return
-            did = self._device_id
             if isinstance(result, Album):
-                self._safe_api(lambda: self.api.play_album(result.id, device_id=did))
-                self.notify(f"▶  {result.name}", timeout=3)
+                self._open_album_tracks(result)
             else:
+                did = self._device_id
                 self._safe_api(lambda: self.api.play_track(result.id, device_id=did))
+                self._refresh_soon()
+
+        self.push_screen(SearchOverlay(api=self.api), on_search_result)
+
+    def _open_album_tracks(self, album: Album) -> None:
+        def on_track_selected(selection) -> None:
+            if not selection:
+                return
+            selected_album, offset = selection
+            did = self._device_id
+            self._safe_api(lambda: self.api.play_album(selected_album.id, offset=offset, device_id=did))
+            self.notify(f"▶  {selected_album.name}", timeout=3)
             self._refresh_soon()
 
-        self.push_screen(SearchOverlay(api=self.api), on_result)
+        self.push_screen(AlbumTracksOverlay(api=self.api, album=album), on_track_selected)
 
     def action_playlists(self) -> None:
         def on_result(playlist) -> None:

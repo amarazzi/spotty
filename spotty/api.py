@@ -179,8 +179,28 @@ class SpotifyAPI:
             ))
         return albums
 
-    def play_album(self, album_id: str, device_id: str | None = None) -> None:
-        self._sp.start_playback(device_id=device_id, context_uri=f"spotify:album:{album_id}")
+    def album_tracks(self, album_id: str, limit: int = 50) -> list[Track]:
+        result = self._sp.album_tracks(album_id, limit=limit)
+        tracks = []
+        for i, item in enumerate(result.get("items", [])):
+            if not item:
+                continue
+            artists = ", ".join(a["name"] for a in item["artists"])
+            tracks.append(Track(
+                id=item["id"],
+                name=item["name"],
+                artist=artists,
+                album="",
+                duration_ms=item["duration_ms"],
+            ))
+        return tracks
+
+    def play_album(self, album_id: str, offset: int = 0, device_id: str | None = None) -> None:
+        self._sp.start_playback(
+            device_id=device_id,
+            context_uri=f"spotify:album:{album_id}",
+            offset={"position": offset},
+        )
 
     # ------------------------------------------------------------------
     # Home / Browse
