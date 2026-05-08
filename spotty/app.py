@@ -177,7 +177,9 @@ class SpottyApp(App):
                 self._safe_api(lambda: self.api.play_track(track.id, device_id=did))
                 self._refresh_soon()
 
-        self.push_screen(QueueOverlay(api=self.api), on_result)
+        current = self._safe_api(self.api.current_track, silent=True)
+        seed_id = current.id if current else None
+        self.push_screen(QueueOverlay(api=self.api, current_track_id=seed_id), on_result)
 
     # ------------------------------------------------------------------
     # spotifyd connection

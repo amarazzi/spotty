@@ -198,13 +198,35 @@ class SpotifyAPI:
     def transfer_playback(self, device_id: str, force_play: bool = True) -> None:
         self._sp.transfer_playback(device_id, force_play=force_play)
 
-    def get_queue(self) -> list[Track]:
+    def get_queue(self, seed_track_id: str | None = None) -> tuple[list[Track], bool]:
+        """Returns (tracks, is_recommendations). Falls back to recommendations if queue is empty."""
         result = self._sp.queue()
-        if not result:
-            return []
         tracks = []
-        for item in result.get("queue", [])[:25]:
-            if not item or item.get("type") != "track":
+        if result:
+            for item in result.get("queue", [])[:25]:
+                if not item or item.get("type") != "track":
+                    continue
+                artists = ", ".join(a["name"] for a in item["artists"])
+                images = item["album"].get("images", [])
+                cover = images[0]["url"] if images else None
+                tracks.append(Track(
+                    id=item["id"],
+                    name=item["name"],
+                    artist=artists,
+                    album=item["album"]["name"],
+                    duration_ms=item["duration_ms"],
+                    cover_url=cover,
+                ))
+
+        if tracks:
+            return tracks, False
+
+        if not seed_track_id:
+            return [], False
+
+        recs = self._sp.recommendations(seed_tracks=[seed_track_id], limit=20)
+        for item in recs.get("tracks", []):
+            if not item:
                 continue
             artists = ", ".join(a["name"] for a in item["artists"])
             images = item["album"].get("images", [])
@@ -217,7 +239,7 @@ class SpotifyAPI:
                 duration_ms=item["duration_ms"],
                 cover_url=cover,
             ))
-        return tracks
+        return tracks, True
 
     def recently_played(self, limit: int = 20) -> list[Track]:
         result = self._sp.current_user_recently_played(limit=limit)
