@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import shutil
 import subprocess
 import time
@@ -34,6 +35,7 @@ def setup_and_start() -> bool:
         return False
 
     if is_running():
+        atexit.register(stop)
         return True
 
     if not _CREDENTIALS.exists():
@@ -54,6 +56,14 @@ def _authenticate() -> None:
     print()
 
 
+def stop() -> None:
+    """Kill spotifyd if it's running."""
+    try:
+        subprocess.run(["pkill", "-f", "spotifyd"], capture_output=True)
+    except Exception:
+        pass
+
+
 def _launch() -> bool:
     try:
         subprocess.Popen(
@@ -68,7 +78,10 @@ def _launch() -> bool:
             stderr=subprocess.DEVNULL,
         )
         time.sleep(2)
-        return is_running()
+        if is_running():
+            atexit.register(stop)
+            return True
+        return False
     except Exception as e:
         print(f"\n  Could not start spotifyd: {e}\n")
         return False
