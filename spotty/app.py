@@ -44,15 +44,24 @@ class SpottyApp(App):
 
     def on_mount(self) -> None:
         cached = track_cache.load()
-        if cached:
-            self.query_one(NowPlaying).update_track(cached)
-        self._playlists = self._safe_api(self.api.playlists, silent=True) or []
-        vol = self._safe_api(self.api.current_volume, silent=True)
-        if vol is not None:
-            self._volume = vol
-        self._refresh()
+        self.query_one(NowPlaying).update_track(cached)  # None → "Nothing playing" if no cache
+        self.set_timer(0.1, self._refresh)
         self.set_interval(3, self._refresh)
+        self._load_initial_state()
         self._connect_spotifyd()
+
+    @work(thread=True, exclusive=True, name="init-state")
+    def _load_initial_state(self) -> None:
+        try:
+            self._playlists = self.api.playlists() or []
+        except Exception:
+            pass
+        try:
+            vol = self.api.current_volume()
+            if vol is not None:
+                self._volume = vol
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Refresh
@@ -60,9 +69,11 @@ class SpottyApp(App):
 
     def _refresh(self) -> None:
         track = self._safe_api(self.api.current_track, silent=True)
-        self.query_one(NowPlaying).update_track(track)
-        if track:
+        if track is not None:
             track_cache.save(track)
+        else:
+            track = track_cache.load()
+        self.query_one(NowPlaying).update_track(track)
 
     def _refresh_soon(self) -> None:
         """Refresh state after a short delay (gives Spotify API time to catch up)."""
