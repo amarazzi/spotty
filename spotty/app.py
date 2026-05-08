@@ -8,7 +8,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 
-from spotty.api import SpotifyAPI
+from spotty.api import Album, SpotifyAPI
 from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installed as _spotifyd_installed
 from spotty import track_cache
 from spotty.widgets.home_overlay import HomeOverlay
@@ -132,10 +132,15 @@ class SpottyApp(App):
     # ------------------------------------------------------------------
 
     def action_search(self) -> None:
-        def on_result(track) -> None:
-            if track:
-                self._safe_api(lambda: self.api.play_track(track.id))
-                self._refresh_soon()
+        def on_result(result) -> None:
+            if not result:
+                return
+            if isinstance(result, Album):
+                self._safe_api(lambda: self.api.play_album(result.id))
+                self.notify(f"▶  {result.name}", timeout=3)
+            else:
+                self._safe_api(lambda: self.api.play_track(result.id))
+            self._refresh_soon()
 
         self.push_screen(SearchOverlay(api=self.api), on_result)
 

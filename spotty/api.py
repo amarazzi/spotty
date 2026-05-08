@@ -21,6 +21,14 @@ class Track:
 
 
 @dataclass
+class Album:
+    id: str
+    name: str
+    artist: str
+    total: int
+
+
+@dataclass
 class Playlist:
     id: str
     name: str
@@ -153,6 +161,25 @@ class SpotifyAPI:
 
     def play_track(self, track_id: str) -> None:
         self._sp.start_playback(uris=[f"spotify:track:{track_id}"])
+
+    def search_albums(self, query: str, limit: int = 15) -> list[Album]:
+        result = self._sp.search(q=query, type="album", limit=limit)
+        items = result.get("albums", {}).get("items", [])
+        albums = []
+        for a in items:
+            if not a:
+                continue
+            artists = ", ".join(x["name"] for x in a["artists"])
+            albums.append(Album(
+                id=a["id"],
+                name=a["name"],
+                artist=artists,
+                total=a["total_tracks"],
+            ))
+        return albums
+
+    def play_album(self, album_id: str) -> None:
+        self._sp.start_playback(context_uri=f"spotify:album:{album_id}")
 
     # ------------------------------------------------------------------
     # Home / Browse
