@@ -120,19 +120,21 @@ SearchOverlay, PlaylistsOverlay, HomeOverlay {
 #playlist-list > ListItem,
 #home-list > ListItem {
     background: #121212;
-    color: #B3B3B3;
+    color: #707070;
     padding: 0 1;
 }
 
 #search-results > ListItem:hover,
 #playlist-list > ListItem:hover,
 #home-list > ListItem:hover {
-    background: #282828;
+    background: #1a1a1a;
+    color: #B3B3B3;
 }
 
 #search-results > ListItem.--highlight,
 #playlist-list > ListItem.--highlight,
 #home-list > ListItem.--highlight {
-    background: #1DB954;
-    color: #000000;
+    background: #1a1a1a;
+    color: #ffffff;
+    border-left: tall #1DB954;
 }

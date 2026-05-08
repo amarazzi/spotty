@@ -75,7 +75,10 @@ class SearchOverlay(ModalScreen):
             d = t.duration_ms // 1000
             lv.append(
                 ListItem(
-                    Label(f"[bold]{t.name}[/bold]  [dim]{t.artist}  {d // 60}:{d % 60:02d}[/dim]")
+                    Label(
+                        f"[#1DB954]♪[/#1DB954]  [bold]{t.name}[/bold]"
+                        f"  [dim]· {t.artist}  {d // 60}:{d % 60:02d}[/dim]"
+                    )
                 )
             )
 
