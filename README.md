@@ -22,7 +22,6 @@ A Spotify TUI built in Python using Textual and the Spotify Web API.
 
 - Python 3.11+
 - Spotify Premium account (required for playback control via the Web API)
-- A Spotify Developer app (free) — [create one here](https://developer.spotify.com/dashboard)
 
 ## Installation
 
@@ -34,19 +33,7 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Copy the env template and fill in your credentials:
-
-```bash
-cp .env.example .env
-```
-
-```
-SPOTIFY_CLIENT_ID=your_client_id
-SPOTIFY_CLIENT_SECRET=your_client_secret
-SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
-```
-
-> In the Spotify Developer Dashboard, add `http://127.0.0.1:8888/callback` as a Redirect URI.
+No `.env` or API keys needed — spotty uses its own registered Spotify app via PKCE.
 
 ## Running
 

@@ -1,18 +1,22 @@
-"""OAuth 2.0 Authorization Code Flow for Spotify (paste-URL flow)."""
+"""Spotify auth — PKCE flow with local callback server. No setup required."""
 
-import os
+from __future__ import annotations
+
+import http.server
+import threading
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import spotipy
-from dotenv import load_dotenv
-from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyPKCE
 
-_ENV_PATH = Path(__file__).parent.parent / ".env"
-load_dotenv(_ENV_PATH)
+# Public client_id — safe to commit (PKCE needs no secret).
+_CLIENT_ID = "0d9f756568b748339c35d3a09110ec21"
+_REDIRECT_URI = "http://127.0.0.1:8888/callback"
+_PORT = 8888
 
-SCOPES = [
+SCOPES = " ".join([
     "user-read-playback-state",
     "user-modify-playback-state",
     "user-read-currently-playing",
@@ -20,80 +24,87 @@ SCOPES = [
     "playlist-read-collaborative",
     "user-library-read",
     "user-read-recently-played",
-]
+])
 
-CACHE_PATH = Path.home() / ".spotify_cache"
+CACHE_PATH = Path.home() / ".cache" / "spotty" / "token"
+
+_HTML_SUCCESS = (
+    b"<!DOCTYPE html><html><head><meta charset='utf-8'><title>spotty</title>"
+    b"<style>body{font-family:monospace;background:#121212;color:#1DB954;"
+    b"display:flex;align-items:center;justify-content:center;height:100vh;margin:0}"
+    b"p{color:#B3B3B3;margin-top:.5rem}</style></head>"
+    b"<body><div style='text-align:center'><h2>spotty</h2>"
+    b"<p>Logged in. You can close this tab.</p></div></body></html>"
+)
 
 
-def _get_oauth() -> SpotifyOAuth:
-    client_id = os.getenv("SPOTIFY_CLIENT_ID")
-    client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
-    redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback")
+class _CallbackHandler(http.server.BaseHTTPRequestHandler):
+    code: str | None = None
+    event: threading.Event = threading.Event()
 
-    _PLACEHOLDERS = {"your_client_id_here", "your_client_secret_here", "", None}
-    if client_id in _PLACEHOLDERS or client_secret in _PLACEHOLDERS:
-        raise EnvironmentError(
-            f".env not configured at {_ENV_PATH.resolve()}\n\n"
-            "  1. Open https://developer.spotify.com/dashboard\n"
-            "  2. Create an app → Settings\n"
-            "  3. Copy Client ID and Client Secret to .env\n"
-            "  4. Add redirect URI: http://127.0.0.1:8888/callback\n"
-        )
+    def do_GET(self) -> None:
+        params = parse_qs(urlparse(self.path).query)
+        codes = params.get("code")
+        if codes:
+            _CallbackHandler.code = codes[0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(_HTML_SUCCESS)
+        else:
+            self.send_response(400)
+            self.end_headers()
+        _CallbackHandler.event.set()
 
-    return SpotifyOAuth(
-        client_id=client_id,
-        client_secret=client_secret,
-        redirect_uri=redirect_uri,
-        scope=" ".join(SCOPES),
+    def log_message(self, *_) -> None:  # silence access logs
+        pass
+
+
+def _get_pkce() -> SpotifyPKCE:
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return SpotifyPKCE(
+        client_id=_CLIENT_ID,
+        redirect_uri=_REDIRECT_URI,
+        scope=SCOPES,
         cache_path=str(CACHE_PATH),
         open_browser=False,
     )
 
 
-def _extract_code_from_url(url: str) -> str | None:
-    params = parse_qs(urlparse(url).query)
-    codes = params.get("code")
-    return codes[0] if codes else None
+def _login_flow(pkce: SpotifyPKCE) -> None:
+    _CallbackHandler.code = None
+    _CallbackHandler.event.clear()
 
+    server = http.server.HTTPServer(("127.0.0.1", _PORT), _CallbackHandler)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
 
-def _paste_url_flow(oauth: SpotifyOAuth) -> None:
-    """Run the one-time browser paste-URL flow and populate the token cache."""
-    auth_url = oauth.get_authorize_url()
     print(
         "\n"
-        "  ┌─────────────────────────────────────────────────────────┐\n"
-        "  │  spotty — Spotify login                                  │\n"
-        "  ├─────────────────────────────────────────────────────────┤\n"
-        "  │  1. Browser opens. Log in with Spotify.                 │\n"
-        "  │  2. Browser will try to redirect and fail — that's ok.  │\n"
-        "  │  3. Copy the full URL from the address bar.             │\n"
-        "  │  4. Paste it here and press Enter.                       │\n"
-        "  └─────────────────────────────────────────────────────────┘\n"
+        "  ┌──────────────────────────────────────────┐\n"
+        "  │  spotty — Spotify login                   │\n"
+        "  ├──────────────────────────────────────────┤\n"
+        "  │  Browser opening — log in with Spotify.  │\n"
+        "  │  The tab will close automatically.       │\n"
+        "  └──────────────────────────────────────────┘\n"
     )
-    webbrowser.open(auth_url)
+    webbrowser.open(pkce.get_authorize_url())
 
-    while True:
-        try:
-            pasted = input("  Callback URL → ").strip()
-        except (EOFError, KeyboardInterrupt):
-            raise SystemExit("\n  Authentication cancelled.")
+    if not _CallbackHandler.event.wait(timeout=120):
+        server.shutdown()
+        raise SystemExit("\n  Login timed out. Run spotty again to retry.")
 
-        code = _extract_code_from_url(pasted)
-        if code:
-            break
-        print("  Invalid URL, try again.")
+    server.shutdown()
 
-    oauth.get_access_token(code, as_dict=True)
-    print("\n  ✓ Authenticated. Starting spotty…\n")
+    if not _CallbackHandler.code:
+        raise SystemExit("\n  Login failed — no code received.")
+
+    pkce.get_access_token(_CallbackHandler.code)
+    print("  ✓ Logged in. Starting spotty…\n")
 
 
 def get_spotify_client() -> spotipy.Spotify:
-    """Return an authenticated Spotify client with automatic token refresh."""
-    oauth = _get_oauth()
-
-    # If no cached token, run the one-time paste-URL flow to populate it.
-    if not oauth.get_cached_token():
-        _paste_url_flow(oauth)
-
-    # auth_manager automatically refreshes the token when it expires (after 1h).
-    return spotipy.Spotify(auth_manager=oauth, requests_timeout=10)
+    pkce = _get_pkce()
+    if not pkce.get_cached_token():
+        _login_flow(pkce)
+    return spotipy.Spotify(auth_manager=pkce, requests_timeout=10)
