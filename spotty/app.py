@@ -10,6 +10,7 @@ from textual.binding import Binding
 
 from spotty.api import SpotifyAPI
 from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installed as _spotifyd_installed
+from spotty import track_cache
 from spotty.widgets.home_overlay import HomeOverlay
 from spotty.widgets.now_playing import NowPlaying
 from spotty.widgets.playlists_overlay import PlaylistsOverlay
@@ -42,6 +43,9 @@ class SpottyApp(App):
         yield NowPlaying(id="now-playing")
 
     def on_mount(self) -> None:
+        cached = track_cache.load()
+        if cached:
+            self.query_one(NowPlaying).update_track(cached)
         self._playlists = self._safe_api(self.api.playlists, silent=True) or []
         vol = self._safe_api(self.api.current_volume, silent=True)
         if vol is not None:
@@ -57,6 +61,8 @@ class SpottyApp(App):
     def _refresh(self) -> None:
         track = self._safe_api(self.api.current_track, silent=True)
         self.query_one(NowPlaying).update_track(track)
+        if track:
+            track_cache.save(track)
 
     def _refresh_soon(self) -> None:
         """Refresh state after a short delay (gives Spotify API time to catch up)."""
@@ -165,7 +171,7 @@ class SpottyApp(App):
                 devices = self.api.available_devices()
                 device = next((d for d in devices if d.get("name") == _SPOTIFYD_DEVICE), None)
                 if device:
-                    self.api.transfer_playback(device["id"], force_play=True)
+                    self.api.transfer_playback(device["id"], force_play=False)
                     self.call_from_thread(self._refresh)
                     return
             except Exception:
