@@ -100,7 +100,9 @@ class SpottyApp(App):
         if not self._connected:
             self.notify("Still connecting…", timeout=2)
             return
-        self._safe_api(self.api.play_pause)
+        cached = track_cache.load()
+        fallback = f"spotify:track:{cached.id}" if cached else None
+        self._safe_api(lambda: self.api.play_pause(fallback_uri=fallback))
         self._refresh_soon()
 
     def action_next_track(self) -> None:

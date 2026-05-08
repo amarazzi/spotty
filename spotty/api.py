@@ -59,10 +59,14 @@ class SpotifyAPI:
     # Playback controls
     # ------------------------------------------------------------------
 
-    def play_pause(self) -> None:
+    def play_pause(self, fallback_uri: str | None = None) -> None:
         pb = self._sp.current_playback()
         if pb and pb["is_playing"]:
             self._sp.pause_playback()
+        elif pb and pb.get("item"):
+            self._sp.start_playback()
+        elif fallback_uri:
+            self._sp.start_playback(uris=[fallback_uri])
         else:
             self._sp.start_playback()
 
