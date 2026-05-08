@@ -29,6 +29,7 @@ except Exception:
     _Pixels = None
 
 _ART_PX = 256
+_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
 
 def _fetch_pil(url: str) -> PILImage.Image:
@@ -65,9 +66,11 @@ class NowPlaying(Widget):
         self._is_playing: bool = False
         self._duration_ms: int = 0
         self._art_widget_id = "np-art-img" if _IMAGE_BACKEND == "textual-image" else "np-art-static"
+        self._spinner_idx: int = 0
+        self._loading: bool = True
 
     def compose(self) -> ComposeResult:
-        yield Label("[dim]Connecting to Spotify…[/dim]", id="np-loading")
+        yield Label("", id="np-loading")
 
         with Horizontal(id="np-art-row"):
             if _IMAGE_BACKEND == "textual-image" and _AutoImage is not None:
@@ -87,10 +90,22 @@ class NowPlaying(Widget):
         )
 
     def on_mount(self) -> None:
-        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time"):
+        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time", "np-hints"):
             self.query_one(f"#{wid}").display = False
+        self.add_class("loading")
+        self.set_interval(0.1, self._spin)
         self.set_interval(1, self._tick)
         self.call_after_refresh(self._tick)
+
+    def _spin(self) -> None:
+        if not self._loading:
+            return
+        self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER)
+        frame = _SPINNER[self._spinner_idx]
+        self.query_one("#np-loading", Label).update(
+            f"[bold #1DB954]spotty[/bold #1DB954]\n\n"
+            f"[dim]{frame}  Connecting to Spotify…[/dim]"
+        )
 
     # ------------------------------------------------------------------
     # Progress tick
@@ -132,8 +147,10 @@ class NowPlaying(Widget):
     # ------------------------------------------------------------------
 
     def set_ready(self, track: Track | None) -> None:
+        self._loading = False
+        self.remove_class("loading")
         self.query_one("#np-loading").display = False
-        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time"):
+        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time", "np-hints"):
             self.query_one(f"#{wid}").display = True
         self.update_track(track)
         self.call_after_refresh(self._tick)

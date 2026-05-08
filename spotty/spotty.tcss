@@ -12,6 +12,17 @@ NowPlaying {
     height: 100%;
 }
 
+NowPlaying.loading {
+    align: center middle;
+}
+
+#np-loading {
+    width: auto;
+    height: auto;
+    text-align: center;
+    color: #909090;
+}
+
 #np-art-row {
     width: 100%;
     height: 14;
