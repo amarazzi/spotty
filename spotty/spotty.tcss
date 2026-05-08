@@ -75,7 +75,7 @@ NowPlaying.loading {
 }
 
 /* ── Modals ── */
-SearchOverlay, PlaylistsOverlay, HomeOverlay {
+SearchOverlay, PlaylistsOverlay, HomeOverlay, QueueOverlay, AlbumTracksOverlay, LyricsOverlay {
     align: center middle;
 }
 
@@ -137,4 +137,25 @@ SearchOverlay, PlaylistsOverlay, HomeOverlay {
     background: #1a1a1a;
     color: #ffffff;
     border-left: tall #1DB954;
+}
+
+/* ── Lyrics ── */
+#lyrics-container {
+    background: #181818;
+    border: solid #1DB954;
+    width: 80;
+    height: 40;
+    padding: 1 2;
+    layout: vertical;
+}
+
+#lyrics-scroll {
+    height: 1fr;
+    background: #121212;
+    border: solid #282828;
+}
+
+#lyrics-text {
+    padding: 1 2;
+    color: #B3B3B3;
 }

@@ -244,22 +244,103 @@ class SpotifyAPI:
         if not seed_track_id:
             return [], False
 
-        recs = self._sp.recommendations(seed_tracks=[seed_track_id], limit=20)
-        for item in recs.get("tracks", []):
-            if not item:
-                continue
-            artists = ", ".join(a["name"] for a in item["artists"])
-            images = item["album"].get("images", [])
-            cover = images[0]["url"] if images else None
+        # Try deprecated recommendations endpoint first (still works for older apps)
+        try:
+            recs = self._sp.recommendations(seed_tracks=[seed_track_id], limit=20)
+            for item in recs.get("tracks", []):
+                if not item:
+                    continue
+                artists = ", ".join(a["name"] for a in item["artists"])
+                images = item["album"].get("images", [])
+                cover = images[0]["url"] if images else None
+                tracks.append(Track(
+                    id=item["id"],
+                    name=item["name"],
+                    artist=artists,
+                    album=item["album"]["name"],
+                    duration_ms=item["duration_ms"],
+                    cover_url=cover,
+                ))
+            if tracks:
+                return tracks, True
+        except Exception:
+            pass
+
+        # Fall back: related artists' top tracks
+        similar = self._similar_tracks(seed_track_id)
+        return similar, True
+
+    def _similar_tracks(self, seed_track_id: str, limit: int = 20) -> list[Track]:
+        """Similar tracks via artist top-tracks + genre search (no deprecated endpoints)."""
+        try:
+            track_info = self._sp.track(seed_track_id)
+        except Exception:
+            return []
+        if not track_info:
+            return []
+
+        artist_ids = [a["id"] for a in track_info.get("artists", []) if a.get("id")]
+        artist_name = track_info["artists"][0]["name"] if track_info.get("artists") else ""
+        if not artist_ids:
+            return []
+
+        try:
+            market = self._sp.current_user().get("country", "US")
+        except Exception:
+            market = "US"
+
+        tracks: list[Track] = []
+        seen: set[str] = {seed_track_id}
+
+        def _append(t: dict) -> bool:
+            if not t or t.get("id") in seen:
+                return False
+            seen.add(t["id"])
+            arts = ", ".join(a["name"] for a in t.get("artists", []))
+            imgs = t.get("album", {}).get("images", [])
+            cover = imgs[0]["url"] if imgs else None
             tracks.append(Track(
-                id=item["id"],
-                name=item["name"],
-                artist=artists,
-                album=item["album"]["name"],
-                duration_ms=item["duration_ms"],
+                id=t["id"],
+                name=t["name"],
+                artist=arts,
+                album=t.get("album", {}).get("name", ""),
+                duration_ms=t.get("duration_ms", 0),
                 cover_url=cover,
             ))
-        return tracks, True
+            return len(tracks) >= limit
+
+        # 1. Current artist's own top tracks
+        try:
+            top = self._sp.artist_top_tracks(artist_ids[0], country=market)
+            for t in top.get("tracks", []):
+                if _append(t):
+                    return tracks
+        except Exception:
+            pass
+
+        # 2. Genre-based search using artist's genres
+        try:
+            artist_info = self._sp.artist(artist_ids[0])
+            genres = artist_info.get("genres", [])[:3]
+            for genre in genres:
+                result = self._sp.search(q=f'genre:"{genre}"', type="track", limit=15, market=market)
+                for t in result.get("tracks", {}).get("items", []):
+                    if _append(t):
+                        return tracks
+        except Exception:
+            pass
+
+        # 3. Fallback: search by artist name
+        if not tracks:
+            try:
+                result = self._sp.search(q=f'artist:"{artist_name}"', type="track", limit=20, market=market)
+                for t in result.get("tracks", {}).get("items", []):
+                    if _append(t):
+                        return tracks
+            except Exception:
+                pass
+
+        return tracks
 
     def recently_played(self, limit: int = 20) -> list[Track]:
         result = self._sp.current_user_recently_played(limit=limit)

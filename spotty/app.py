@@ -13,6 +13,7 @@ from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installe
 from spotty import track_cache
 from spotty.widgets.album_tracks_overlay import AlbumTracksOverlay
 from spotty.widgets.home_overlay import HomeOverlay
+from spotty.widgets.lyrics_overlay import LyricsOverlay
 from spotty.widgets.now_playing import NowPlaying
 from spotty.widgets.playlists_overlay import PlaylistsOverlay
 from spotty.widgets.queue_overlay import QueueOverlay
@@ -31,7 +32,8 @@ class SpottyApp(App):
         Binding("equal,plus", "volume_up", "Vol+"),
         Binding("minus", "volume_down", "Vol-"),
         Binding("slash", "search", "Search"),
-        Binding("l", "playlists", "Playlists"),
+        Binding("l", "lyrics", "Lyrics"),
+        Binding("o", "playlists", "Playlists"),
         Binding("r", "home", "Recent"),
         Binding("u", "queue", "Queue"),
     ]
@@ -96,6 +98,31 @@ class SpottyApp(App):
     def _refresh_soon(self) -> None:
         self.set_timer(0.6, self._refresh)
 
+    def _check_skipped(self, prev_id: str | None) -> None:
+        """After next_track, if the track didn't change Spotify had no context — play something similar."""
+        track = self._safe_api(self.api.current_track, silent=True)
+        if track is not None:
+            track_cache.save(track)
+        else:
+            track = track_cache.load()
+        self.query_one(NowPlaying).update_track(track)
+
+        if prev_id and (track is None or track.id == prev_id):
+            self._play_similar_next(prev_id)
+
+    @work(thread=True, exclusive=True, name="skip-similar")
+    def _play_similar_next(self, seed_id: str) -> None:
+        similar = self.api._similar_tracks(seed_id, limit=5)
+        if not similar:
+            self.call_from_thread(self.notify, "Nothing to skip to", timeout=2)
+            return
+        did = self._device_id
+        track = similar[0]
+        self.call_from_thread(
+            lambda: self._safe_api(lambda: self.api.play_track(track.id, device_id=did))
+        )
+        self.call_from_thread(self._refresh_soon)
+
     # ------------------------------------------------------------------
     # Actions — playback
     # ------------------------------------------------------------------
@@ -112,13 +139,17 @@ class SpottyApp(App):
 
     def action_next_track(self) -> None:
         if not self._connected:
+            self.notify("Still connecting…", timeout=2)
             return
         did = self._device_id
+        prev = track_cache.load()
+        prev_id = prev.id if prev else None
         self._safe_api(lambda: self.api.next_track(device_id=did))
-        self._refresh_soon()
+        self.set_timer(1.2, lambda: self._check_skipped(prev_id))
 
     def action_previous_track(self) -> None:
         if not self._connected:
+            self.notify("Still connecting…", timeout=2)
             return
         did = self._device_id
         self._safe_api(lambda: self.api.previous_track(device_id=did))
@@ -190,8 +221,19 @@ class SpottyApp(App):
                 self._refresh_soon()
 
         current = self._safe_api(self.api.current_track, silent=True)
+        if current is None:
+            current = track_cache.load()
         seed_id = current.id if current else None
         self.push_screen(QueueOverlay(api=self.api, current_track_id=seed_id), on_result)
+
+    def action_lyrics(self) -> None:
+        track = track_cache.load()
+        if not track:
+            track = self._safe_api(self.api.current_track, silent=True)
+        if not track:
+            self.notify("No track playing", timeout=2)
+            return
+        self.push_screen(LyricsOverlay(track_name=track.name, artist=track.artist))
 
     # ------------------------------------------------------------------
     # spotifyd connection

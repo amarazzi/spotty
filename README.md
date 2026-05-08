@@ -7,9 +7,13 @@ A Spotify TUI built in Python using Textual and the Spotify Web API.
 ## Features
 
 - **Now playing** — full-screen view with album art (Sixel/Kitty/half-block depending on terminal), track info, and a real-time progress bar with `━━━●━━━` cursor
-- **Search** — `/` opens a search overlay; type, hit Enter, select a track to play
-- **Playlists** — `l` opens your playlists; select one to start playing it
+- **Search** — `/` opens a search overlay; toggle between tracks and albums with `Tab`
+- **Album browsing** — selecting an album shows its tracklist so you can choose where to start
+- **Playlists** — `o` opens your playlists; select one to start playing it
+- **Queue / Recommendations** — `u` shows upcoming tracks; falls back to similar artists if the queue is empty
+- **Lyrics** — `l` fetches and displays lyrics for the current track (scrollable with `j`/`k`)
 - **Recently played** — `r` shows your listening history
+- **Smart next** — `n` skips to the next track; if there is no queue context, automatically plays something similar
 - **Playback controls** — `space` play/pause, `n` next, `p` previous, `+`/`-` volume
 - **Auto device activation** — if no device is active, spotty finds one and transfers playback automatically
 - **spotifyd integration** — optional local audio daemon so spotty works completely standalone (no phone or desktop app needed)
@@ -61,21 +65,25 @@ To use spotty without any Spotify app running:
 brew install spotifyd
 ```
 
-On next launch, spotty detects spotifyd, asks for your Spotify username/password once, writes `~/.config/spotifyd/spotifyd.conf`, and starts it automatically. From then on, spotty is fully self-contained.
+On next launch, spotty detects spotifyd, authenticates once, and starts it automatically. From then on, spotty is fully self-contained — no phone or desktop Spotify app needed.
 
 ## Keybindings
 
 | Key | Action |
 |---|---|
 | `space` | Play / Pause |
-| `n` | Next track |
+| `n` | Next track (auto-plays similar if no queue) |
 | `p` | Previous track |
 | `+` / `=` | Volume +5% |
 | `-` | Volume −5% |
-| `/` | Search |
-| `l` | Playlists |
+| `/` | Search (tracks & albums, `Tab` to toggle) |
+| `l` | Lyrics |
+| `o` | Playlists |
 | `r` | Recently played |
+| `u` | Queue / Recommendations |
 | `q` | Quit |
+
+Inside overlays: `j`/`k` to navigate, `Enter` to select, `Esc` to close.
 
 ## Stack
 
@@ -85,4 +93,5 @@ On next launch, spotty detects spotifyd, asks for your Spotify username/password
 - [rich-pixels](https://github.com/darrenburns/rich-pixels) — half-block fallback
 - [Pillow](https://python-pillow.org/) — image processing
 - [httpx](https://www.python-httpx.org/) — async HTTP for cover art
+- [syncedlyrics](https://github.com/moehmeni/syncedlyrics) — multi-source lyrics fetcher
 - [spotifyd](https://github.com/Spotifyd/spotifyd) — optional local Spotify Connect daemon
