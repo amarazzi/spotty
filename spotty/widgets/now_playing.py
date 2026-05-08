@@ -67,6 +67,8 @@ class NowPlaying(Widget):
         self._art_widget_id = "np-art-img" if _IMAGE_BACKEND == "textual-image" else "np-art-static"
 
     def compose(self) -> ComposeResult:
+        yield Label("[dim]Connecting to Spotify…[/dim]", id="np-loading")
+
         with Horizontal(id="np-art-row"):
             if _IMAGE_BACKEND == "textual-image" and _AutoImage is not None:
                 yield _AutoImage(None, id=self._art_widget_id, classes="np-art")
@@ -85,6 +87,8 @@ class NowPlaying(Widget):
         )
 
     def on_mount(self) -> None:
+        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time"):
+            self.query_one(f"#{wid}").display = False
         self.set_interval(1, self._tick)
         self.call_after_refresh(self._tick)
 
@@ -122,6 +126,17 @@ class NowPlaying(Widget):
         e = current_ms // 1000
         t = self._duration_ms // 1000
         time_lbl.update(f"[dim]{e // 60}:{e % 60:02d}  ·  {t // 60}:{t % 60:02d}[/dim]")
+
+    # ------------------------------------------------------------------
+    # Ready transition
+    # ------------------------------------------------------------------
+
+    def set_ready(self, track: Track | None) -> None:
+        self.query_one("#np-loading").display = False
+        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time"):
+            self.query_one(f"#{wid}").display = True
+        self.update_track(track)
+        self.call_after_refresh(self._tick)
 
     # ------------------------------------------------------------------
     # Track update

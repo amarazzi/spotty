@@ -38,15 +38,12 @@ class SpottyApp(App):
         self.api = api
         self._volume = 50
         self._playlists: list = []
+        self._ready = False
 
     def compose(self) -> ComposeResult:
         yield NowPlaying(id="now-playing")
 
     def on_mount(self) -> None:
-        cached = track_cache.load()
-        self.query_one(NowPlaying).update_track(cached)  # None → "Nothing playing" if no cache
-        self.set_timer(0.1, self._refresh)
-        self.set_interval(3, self._refresh)
         self._load_initial_state()
         self._connect_spotifyd()
 
@@ -64,10 +61,27 @@ class SpottyApp(App):
             pass
 
     # ------------------------------------------------------------------
+    # Ready transition
+    # ------------------------------------------------------------------
+
+    def _mark_ready(self) -> None:
+        """Called from _connect_spotifyd when the device is up (or we give up)."""
+        self._ready = True
+        track = self._safe_api(self.api.current_track, silent=True)
+        if track is not None:
+            track_cache.save(track)
+        else:
+            track = track_cache.load()
+        self.query_one(NowPlaying).set_ready(track)
+        self.set_interval(3, self._refresh)
+
+    # ------------------------------------------------------------------
     # Refresh
     # ------------------------------------------------------------------
 
     def _refresh(self) -> None:
+        if not self._ready:
+            return
         track = self._safe_api(self.api.current_track, silent=True)
         if track is not None:
             track_cache.save(track)
@@ -76,7 +90,6 @@ class SpottyApp(App):
         self.query_one(NowPlaying).update_track(track)
 
     def _refresh_soon(self) -> None:
-        """Refresh state after a short delay (gives Spotify API time to catch up)."""
         self.set_timer(0.6, self._refresh)
 
     # ------------------------------------------------------------------
@@ -84,14 +97,21 @@ class SpottyApp(App):
     # ------------------------------------------------------------------
 
     def action_play_pause(self) -> None:
+        if not self._ready:
+            self.notify("Still connecting…", timeout=2)
+            return
         self._safe_api(self.api.play_pause)
         self._refresh_soon()
 
     def action_next_track(self) -> None:
+        if not self._ready:
+            return
         self._safe_api(self.api.next_track)
         self._refresh_soon()
 
     def action_previous_track(self) -> None:
+        if not self._ready:
+            return
         self._safe_api(self.api.previous_track)
         self._refresh_soon()
 
@@ -135,6 +155,27 @@ class SpottyApp(App):
         self.push_screen(HomeOverlay(api=self.api), on_result)
 
     # ------------------------------------------------------------------
+    # spotifyd connection
+    # ------------------------------------------------------------------
+
+    @work(thread=True, exclusive=True, name="spotifyd-connect")
+    def _connect_spotifyd(self) -> None:
+        """Poll until the spotifyd device appears, then mark ready."""
+        import time as _t
+        if _spotifyd_installed():
+            for _ in range(8):  # up to 4 seconds
+                _t.sleep(0.5)
+                try:
+                    devices = self.api.available_devices()
+                    device = next((d for d in devices if d.get("name") == _SPOTIFYD_DEVICE), None)
+                    if device:
+                        self.api.transfer_playback(device["id"], force_play=False)
+                        break
+                except Exception:
+                    pass
+        self.call_from_thread(self._mark_ready)
+
+    # ------------------------------------------------------------------
     # Error handling
     # ------------------------------------------------------------------
 
@@ -169,24 +210,6 @@ class SpottyApp(App):
             if not silent:
                 self.notify(f"Network error: {e}", severity="warning", timeout=4)
             return None
-
-    @work(thread=True, exclusive=True, name="spotifyd-connect")
-    def _connect_spotifyd(self) -> None:
-        """Poll until the spotifyd device appears, then transfer playback and resume."""
-        import time as _t
-        if not _spotifyd_installed():
-            return
-        for _ in range(14):
-            _t.sleep(0.5)
-            try:
-                devices = self.api.available_devices()
-                device = next((d for d in devices if d.get("name") == _SPOTIFYD_DEVICE), None)
-                if device:
-                    self.api.transfer_playback(device["id"], force_play=False)
-                    self.call_from_thread(self._refresh)
-                    return
-            except Exception:
-                pass
 
     def _try_activate_device(self) -> bool:
         try:
