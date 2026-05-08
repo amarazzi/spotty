@@ -67,22 +67,22 @@ class SpotifyAPI:
     # Playback controls
     # ------------------------------------------------------------------
 
-    def play_pause(self, fallback_uri: str | None = None) -> None:
+    def play_pause(self, fallback_uri: str | None = None, device_id: str | None = None) -> None:
         pb = self._sp.current_playback()
         if pb and pb["is_playing"]:
-            self._sp.pause_playback()
+            self._sp.pause_playback(device_id=device_id)
         elif pb and pb.get("item"):
-            self._sp.start_playback()
+            self._sp.start_playback(device_id=device_id)
         elif fallback_uri:
-            self._sp.start_playback(uris=[fallback_uri])
+            self._sp.start_playback(device_id=device_id, uris=[fallback_uri])
         else:
-            self._sp.start_playback()
+            self._sp.start_playback(device_id=device_id)
 
-    def next_track(self) -> None:
-        self._sp.next_track()
+    def next_track(self, device_id: str | None = None) -> None:
+        self._sp.next_track(device_id=device_id)
 
-    def previous_track(self) -> None:
-        self._sp.previous_track()
+    def previous_track(self, device_id: str | None = None) -> None:
+        self._sp.previous_track(device_id=device_id)
 
     def set_volume(self, percent: int) -> None:
         self._sp.volume(max(0, min(100, percent)))
@@ -129,8 +129,9 @@ class SpotifyAPI:
             )
         return tracks
 
-    def play_playlist(self, playlist_id: str, offset: int = 0) -> None:
+    def play_playlist(self, playlist_id: str, offset: int = 0, device_id: str | None = None) -> None:
         self._sp.start_playback(
+            device_id=device_id,
             context_uri=f"spotify:playlist:{playlist_id}",
             offset={"position": offset},
         )
@@ -159,8 +160,8 @@ class SpotifyAPI:
             )
         return tracks
 
-    def play_track(self, track_id: str) -> None:
-        self._sp.start_playback(uris=[f"spotify:track:{track_id}"])
+    def play_track(self, track_id: str, device_id: str | None = None) -> None:
+        self._sp.start_playback(device_id=device_id, uris=[f"spotify:track:{track_id}"])
 
     def search_albums(self, query: str, limit: int = 15) -> list[Album]:
         result = self._sp.search(q=query, type="album", limit=limit)
@@ -178,8 +179,8 @@ class SpotifyAPI:
             ))
         return albums
 
-    def play_album(self, album_id: str) -> None:
-        self._sp.start_playback(context_uri=f"spotify:album:{album_id}")
+    def play_album(self, album_id: str, device_id: str | None = None) -> None:
+        self._sp.start_playback(device_id=device_id, context_uri=f"spotify:album:{album_id}")
 
     # ------------------------------------------------------------------
     # Home / Browse

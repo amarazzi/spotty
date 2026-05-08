@@ -39,6 +39,7 @@ class SpottyApp(App):
         self._volume = 50
         self._playlists: list = []
         self._connected: bool = False
+        self._device_id: str | None = None
 
     def compose(self) -> ComposeResult:
         yield NowPlaying(id="now-playing")
@@ -102,19 +103,22 @@ class SpottyApp(App):
             return
         cached = track_cache.load()
         fallback = f"spotify:track:{cached.id}" if cached else None
-        self._safe_api(lambda: self.api.play_pause(fallback_uri=fallback))
+        did = self._device_id
+        self._safe_api(lambda: self.api.play_pause(fallback_uri=fallback, device_id=did))
         self._refresh_soon()
 
     def action_next_track(self) -> None:
         if not self._connected:
             return
-        self._safe_api(self.api.next_track)
+        did = self._device_id
+        self._safe_api(lambda: self.api.next_track(device_id=did))
         self._refresh_soon()
 
     def action_previous_track(self) -> None:
         if not self._connected:
             return
-        self._safe_api(self.api.previous_track)
+        did = self._device_id
+        self._safe_api(lambda: self.api.previous_track(device_id=did))
         self._refresh_soon()
 
     def action_volume_up(self) -> None:
@@ -135,11 +139,12 @@ class SpottyApp(App):
         def on_result(result) -> None:
             if not result:
                 return
+            did = self._device_id
             if isinstance(result, Album):
-                self._safe_api(lambda: self.api.play_album(result.id))
+                self._safe_api(lambda: self.api.play_album(result.id, device_id=did))
                 self.notify(f"▶  {result.name}", timeout=3)
             else:
-                self._safe_api(lambda: self.api.play_track(result.id))
+                self._safe_api(lambda: self.api.play_track(result.id, device_id=did))
             self._refresh_soon()
 
         self.push_screen(SearchOverlay(api=self.api), on_result)
@@ -147,7 +152,8 @@ class SpottyApp(App):
     def action_playlists(self) -> None:
         def on_result(playlist) -> None:
             if playlist:
-                self._safe_api(lambda: self.api.play_playlist(playlist.id))
+                did = self._device_id
+                self._safe_api(lambda: self.api.play_playlist(playlist.id, device_id=did))
                 self.notify(f"▶  {playlist.name}", timeout=3)
                 self._refresh_soon()
 
@@ -156,7 +162,8 @@ class SpottyApp(App):
     def action_home(self) -> None:
         def on_result(track) -> None:
             if track:
-                self._safe_api(lambda: self.api.play_track(track.id))
+                did = self._device_id
+                self._safe_api(lambda: self.api.play_track(track.id, device_id=did))
                 self._refresh_soon()
 
         self.push_screen(HomeOverlay(api=self.api), on_result)
@@ -176,6 +183,7 @@ class SpottyApp(App):
                     devices = self.api.available_devices()
                     device = next((d for d in devices if d.get("name") == _SPOTIFYD_DEVICE), None)
                     if device:
+                        self._device_id = device["id"]
                         self.api.transfer_playback(device["id"], force_play=False)
                         break
                 except Exception:
