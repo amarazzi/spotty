@@ -84,7 +84,7 @@ class NowPlaying(Widget):
         yield Static("", id="np-bar")
         yield Label("", id="np-time")
         yield Label(
-            "[dim]  /  search    l  playlists    r  recent"
+            "[dim]  /  search    l  playlists    r  recent    u  queue"
             "    space  ▶⏸    n  →    p  ←[/dim]",
             id="np-hints",
         )

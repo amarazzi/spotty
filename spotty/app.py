@@ -14,6 +14,7 @@ from spotty import track_cache
 from spotty.widgets.home_overlay import HomeOverlay
 from spotty.widgets.now_playing import NowPlaying
 from spotty.widgets.playlists_overlay import PlaylistsOverlay
+from spotty.widgets.queue_overlay import QueueOverlay
 from spotty.widgets.search_overlay import SearchOverlay
 
 
@@ -31,6 +32,7 @@ class SpottyApp(App):
         Binding("slash", "search", "Search"),
         Binding("l", "playlists", "Playlists"),
         Binding("r", "home", "Recent"),
+        Binding("u", "queue", "Queue"),
     ]
 
     def __init__(self, api: SpotifyAPI) -> None:
@@ -167,6 +169,15 @@ class SpottyApp(App):
                 self._refresh_soon()
 
         self.push_screen(HomeOverlay(api=self.api), on_result)
+
+    def action_queue(self) -> None:
+        def on_result(track) -> None:
+            if track:
+                did = self._device_id
+                self._safe_api(lambda: self.api.play_track(track.id, device_id=did))
+                self._refresh_soon()
+
+        self.push_screen(QueueOverlay(api=self.api), on_result)
 
     # ------------------------------------------------------------------
     # spotifyd connection
