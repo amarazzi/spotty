@@ -44,10 +44,10 @@ class QueueOverlay(ModalScreen):
     def _load(self) -> None:
         try:
             tracks, is_recs = self.api.get_queue(seed_track_id=self._current_track_id)
-        except Exception:
+        except Exception as e:
             self.app.call_from_thread(
                 self.query_one("#modal-hint", Label).update,
-                "[red]Failed to load queue[/red]",
+                f"[red]{e}[/red]",
             )
             return
         self._tracks = tracks
