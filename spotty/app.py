@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import requests.exceptions
 from spotipy.exceptions import SpotifyException
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 
 from spotty.api import SpotifyAPI
-from spotty.spotifyd_manager import is_running as _spotifyd_is_running
+from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installed as _spotifyd_installed
 from spotty.widgets.home_overlay import HomeOverlay
 from spotty.widgets.now_playing import NowPlaying
 from spotty.widgets.playlists_overlay import PlaylistsOverlay
@@ -41,13 +42,13 @@ class SpottyApp(App):
         yield NowPlaying(id="now-playing")
 
     def on_mount(self) -> None:
-        self._playlists = self._safe_api(self.api.playlists) or []
-        vol = self._safe_api(self.api.current_volume)
+        self._playlists = self._safe_api(self.api.playlists, silent=True) or []
+        vol = self._safe_api(self.api.current_volume, silent=True)
         if vol is not None:
             self._volume = vol
-        self._activate_spotifyd_if_running()
         self._refresh()
         self.set_interval(3, self._refresh)
+        self._connect_spotifyd()
 
     # ------------------------------------------------------------------
     # Refresh
@@ -152,17 +153,23 @@ class SpottyApp(App):
                 self.notify(f"Network error: {e}", severity="warning", timeout=4)
             return None
 
-    def _activate_spotifyd_if_running(self) -> None:
-        """Silently transfer playback to the spotty device if spotifyd is up."""
-        try:
-            if not _spotifyd_is_running():
-                return
-            devices = self.api.available_devices()
-            device = next((d for d in devices if d.get("name") == "spotty"), None)
-            if device:
-                self.api.transfer_playback(device["id"], force_play=False)
-        except Exception:
-            pass
+    @work(thread=True, exclusive=True, name="spotifyd-connect")
+    def _connect_spotifyd(self) -> None:
+        """Poll until the spotifyd device appears, then transfer playback and resume."""
+        import time as _t
+        if not _spotifyd_installed():
+            return
+        for _ in range(14):
+            _t.sleep(0.5)
+            try:
+                devices = self.api.available_devices()
+                device = next((d for d in devices if d.get("name") == _SPOTIFYD_DEVICE), None)
+                if device:
+                    self.api.transfer_playback(device["id"], force_play=True)
+                    self.call_from_thread(self._refresh)
+                    return
+            except Exception:
+                pass
 
     def _try_activate_device(self) -> bool:
         try:

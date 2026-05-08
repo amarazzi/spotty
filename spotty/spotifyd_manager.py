@@ -5,7 +5,6 @@ from __future__ import annotations
 import atexit
 import shutil
 import subprocess
-import time
 from pathlib import Path
 
 DEVICE_NAME = "spotty"
@@ -77,11 +76,9 @@ def _launch() -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        time.sleep(2)
-        if is_running():
-            atexit.register(stop)
-            return True
-        return False
+        # Don't sleep here — the TUI polls for the device in a background worker.
+        atexit.register(stop)
+        return True
     except Exception as e:
         print(f"\n  Could not start spotifyd: {e}\n")
         return False
