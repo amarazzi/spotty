@@ -1,16 +1,15 @@
-"""Spotifyd lifecycle manager — detect, configure, and launch."""
+"""Spotifyd lifecycle manager — detect, authenticate, and launch."""
 
 from __future__ import annotations
 
-import getpass
 import shutil
 import subprocess
 import time
 from pathlib import Path
 
 DEVICE_NAME = "spotty"
-_CONFIG_DIR = Path.home() / ".config" / "spotifyd"
-_CONFIG_PATH = _CONFIG_DIR / "spotifyd.conf"
+_CACHE_DIR = Path.home() / ".cache" / "spotifyd"
+_CREDENTIALS = _CACHE_DIR / "credentials.json"
 
 
 def is_installed() -> bool:
@@ -24,13 +23,12 @@ def is_running() -> bool:
         return False
 
 
-def setup_and_start(client_id: str, client_secret: str) -> bool:
-    """Ensure spotifyd is configured and running. Returns True if running after this call."""
+def setup_and_start() -> bool:
+    """Ensure spotifyd is authenticated and running. Returns True if running after this call."""
     if not is_installed():
         print(
             "\n  spotifyd not found — local audio playback unavailable.\n"
-            "  To enable it, install spotifyd:\n"
-            "    brew install spotifyd\n"
+            "  To enable it:  brew install spotifyd\n"
             "  Then restart spotty.\n"
         )
         return False
@@ -38,40 +36,37 @@ def setup_and_start(client_id: str, client_secret: str) -> bool:
     if is_running():
         return True
 
-    if not _CONFIG_PATH.exists():
-        _prompt_and_write_config(client_id, client_secret)
+    if not _CREDENTIALS.exists():
+        _authenticate()
 
     return _launch()
 
 
-def _prompt_and_write_config(client_id: str, client_secret: str) -> None:
-    print("\n  First-time spotifyd setup — enter your Spotify credentials")
-    print("  (Spotify Premium required for playback)\n")
-    username = input("  Spotify username / email: ").strip()
-    password = getpass.getpass("  Spotify password: ")
-
-    _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    _CONFIG_PATH.write_text(
-        f'[global]\n'
-        f'username = "{username}"\n'
-        f'password = "{password}"\n'
-        f'backend = "rodio"\n'
-        f'device_name = "{DEVICE_NAME}"\n'
-        f'device_type = "computer"\n'
-        f'client_id = "{client_id}"\n'
-        f'client_secret = "{client_secret}"\n'
+def _authenticate() -> None:
+    """Run spotifyd's one-time OAuth login (opens browser, caches token)."""
+    print("\n  First-time spotifyd setup — a browser will open for Spotify login.")
+    print("  Log in and authorise spotty, then come back here.\n")
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["spotifyd", "authenticate", "--cache-path", str(_CACHE_DIR)],
+        check=False,
     )
-    print(f"  Config saved → {_CONFIG_PATH}\n")
+    print()
 
 
 def _launch() -> bool:
     try:
         subprocess.Popen(
-            ["spotifyd", "--no-daemon", "--config-path", str(_CONFIG_PATH)],
+            [
+                "spotifyd", "--no-daemon",
+                "--backend", "portaudio",
+                "--device-name", DEVICE_NAME,
+                "--cache-path", str(_CACHE_DIR),
+                "--disable-discovery=true",
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        # Give spotifyd ~2 s to register with Spotify Connect
         time.sleep(2)
         return is_running()
     except Exception as e:
