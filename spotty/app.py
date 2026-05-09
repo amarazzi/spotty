@@ -340,6 +340,21 @@ class SpottyApp(App):
         did = self._device_id
         self._safe_api(lambda: self.api.play_track(track_id, device_id=did))
         self.call_from_thread(self._refresh_soon)
+        # Auto-queue similar tracks so playback continues after this track ends
+        self.call_from_thread(self._autoqueue_bg, track_id, did)
+
+    @work(thread=True, name="autoqueue")
+    def _autoqueue_bg(self, seed_track_id: str, device_id: str | None) -> None:
+        try:
+            tracks, _ = self.api.get_queue(seed_track_id=seed_track_id)
+            # get_queue returns recs when queue is empty — use those
+            for t in tracks[:10]:
+                try:
+                    self.api.add_to_queue(t.id, device_id=device_id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def action_search(self) -> None:
         def on_search_result(result) -> None:
@@ -381,9 +396,19 @@ class SpottyApp(App):
         self.push_screen(PlaylistsOverlay(api=self.api, playlists=self._playlists), on_playlist_selected)
 
     def action_home(self) -> None:
-        def on_result(track) -> None:
-            if track:
-                self._play_track_bg(track.id)
+        def on_result(result) -> None:
+            if not result:
+                return
+            kind, item = result
+            if kind == "track":
+                self._play_track_bg(item.id)
+            elif kind == "playlist":
+                did = self._device_id
+                self._safe_api(lambda: self.api.play_playlist(item.id, device_id=did))
+                self.notify(f"▶  {item.name}", timeout=3)
+                self._refresh_soon()
+            elif kind == "album":
+                self._open_album_tracks(item)
 
         self.push_screen(HomeOverlay(api=self.api), on_result)
 

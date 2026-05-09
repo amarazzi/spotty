@@ -23,7 +23,7 @@ _SECTIONS = [
         ("/",       "search tracks & albums"),
         ("o",       "playlists"),
         ("f",       "liked songs"),
-        ("r",       "recently played"),
+        ("r",       "home / discover"),
         ("u",       "queue / recommendations"),
         ("l",       "lyrics  (synced if available)"),
         ("i",       "artist info + top tracks"),

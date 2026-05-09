@@ -474,6 +474,72 @@ class SpotifyAPI:
             ))
         return tracks
 
+    def made_for_you(self) -> list[Playlist]:
+        """Spotify-curated playlists in the user's library (Daily Mixes, Discover Weekly, etc.)."""
+        result = self._sp.current_user_playlists(limit=50)
+        playlists = []
+        for p in result.get("items", []):
+            if not p or p.get("owner", {}).get("id") != "spotify":
+                continue
+            playlists.append(Playlist(
+                id=p["id"],
+                name=p["name"],
+                total=p.get("tracks", {}).get("total", 0),
+            ))
+        return playlists[:12]
+
+    def recently_played_albums(self, limit: int = 8) -> list[Album]:
+        """Unique albums from the user's recently played history."""
+        result = self._sp.current_user_recently_played(limit=50)
+        seen: set[str] = set()
+        albums: list[Album] = []
+        for item in result.get("items", []):
+            t = item.get("track")
+            if not t:
+                continue
+            alb = t.get("album", {})
+            album_id = alb.get("id")
+            if not album_id or album_id in seen:
+                continue
+            seen.add(album_id)
+            artists = ", ".join(a["name"] for a in alb.get("artists", []))
+            albums.append(Album(
+                id=album_id,
+                name=alb.get("name", ""),
+                artist=artists,
+                total=alb.get("total_tracks", 0),
+            ))
+            if len(albums) >= limit:
+                break
+        return albums
+
+    def home_recommendations(self, limit: int = 15) -> list[Track]:
+        """Recommended tracks seeded from the user's recent top tracks."""
+        try:
+            top = self._sp.current_user_top_tracks(limit=5, time_range="short_term")
+            seed_ids = [t["id"] for t in top.get("items", [])[:5]]
+            if not seed_ids:
+                return []
+            recs = self._sp.recommendations(seed_tracks=seed_ids, limit=limit)
+            tracks: list[Track] = []
+            for item in recs.get("tracks", []):
+                if not item:
+                    continue
+                artists = ", ".join(a["name"] for a in item.get("artists", []))
+                images = item["album"].get("images", [])
+                cover = images[0]["url"] if images else None
+                tracks.append(Track(
+                    id=item["id"],
+                    name=item["name"],
+                    artist=artists,
+                    album=item["album"]["name"],
+                    duration_ms=item["duration_ms"],
+                    cover_url=cover,
+                ))
+            return tracks
+        except Exception:
+            return []
+
     def recently_played(self, limit: int = 20) -> list[Track]:
         result = self._sp.current_user_recently_played(limit=limit)
         seen: set[str] = set()
