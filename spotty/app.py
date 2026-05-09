@@ -130,6 +130,8 @@ class SpottyApp(App):
             self._shuffle = track.shuffle
             self._repeat = track.repeat
             self._is_playing = track.is_playing
+            if track.volume_percent is not None:
+                self._volume = track.volume_percent
         else:
             track = track_cache.load()
 

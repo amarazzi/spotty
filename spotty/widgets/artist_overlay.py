@@ -138,8 +138,9 @@ class ArtistOverlay(ModalScreen):
             f"[dim]{followers} followers[/dim]"
         )
 
+        width = self.query_one("#artist-container").content_size.width or 76
         self.query_one("#artist-sep", Static).update(
-            "[#282828]" + "─" * 84 + "[/]"
+            "[#282828]" + "─" * max(1, width - 1) + "[/]"
         )
 
         if info.image_url:

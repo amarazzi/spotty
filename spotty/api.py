@@ -21,6 +21,7 @@ class Track:
     artist_id: str | None = None
     shuffle: bool = False
     repeat: str = "off"  # "off", "track", "context"
+    volume_percent: int | None = None
 
 
 @dataclass
@@ -67,10 +68,11 @@ class SpotifyAPI:
         if device.get("id"):
             self._last_device_id = device["id"]
         item = pb["item"]
-        artists = ", ".join(a["name"] for a in item["artists"])
+        raw_artists = item.get("artists") or []
+        artists = ", ".join(a["name"] for a in raw_artists)
         images = item["album"].get("images", [])
         cover = images[0]["url"] if images else None
-        artist_id = item["artists"][0]["id"] if item.get("artists") else None
+        artist_id = raw_artists[0]["id"] if raw_artists else None
         return Track(
             id=item["id"],
             name=item["name"],
@@ -83,6 +85,7 @@ class SpotifyAPI:
             artist_id=artist_id,
             shuffle=pb.get("shuffle_state", False),
             repeat=pb.get("repeat_state", "off"),
+            volume_percent=device.get("volume_percent"),
         )
 
     # ------------------------------------------------------------------
