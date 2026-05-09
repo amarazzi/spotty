@@ -26,7 +26,7 @@ _SECTIONS = [
         ("r",       "recently played"),
         ("u",       "queue / recommendations"),
         ("l",       "lyrics  (synced if available)"),
-        ("i",       "artist top tracks"),
+        ("i",       "artist info + top tracks"),
         ("d",       "devices  (Spotify Connect)"),
     ]),
     ("Inside any overlay", [
