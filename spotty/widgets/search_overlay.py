@@ -1,4 +1,4 @@
-"""Search modal — / to open, Esc to close, Tab to toggle tracks/albums."""
+"""Search modal — / to open, Tab to cycle tracks / albums / playlists."""
 
 from __future__ import annotations
 
@@ -9,14 +9,16 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, ListItem, ListView
 
-from spotty.api import Album, SpotifyAPI, Track
+from spotty.api import Album, Playlist, SpotifyAPI, Track
 from spotty.messages import AddToQueue
+
+_MODES = ("tracks", "albums", "playlists")
 
 
 class SearchOverlay(ModalScreen):
     BINDINGS = [
         Binding("escape", "dismiss", "Close", show=False),
-        Binding("tab", "toggle_mode", "Albums/Tracks", show=False),
+        Binding("tab", "toggle_mode", "", show=False),
         Binding("j", "cursor_down", "", show=False),
         Binding("k", "cursor_up", "", show=False),
         Binding("a", "add_to_queue", "", show=False),
@@ -25,13 +27,13 @@ class SearchOverlay(ModalScreen):
     def __init__(self, api: SpotifyAPI, **kwargs) -> None:
         super().__init__(**kwargs)
         self.api = api
-        self._results: list[Track | Album] = []
+        self._results: list[Track | Album | Playlist] = []
         self._mode = "tracks"
 
     def compose(self) -> ComposeResult:
         with Vertical(id="search-container"):
             yield Label(" Search Spotify", id="search-title")
-            yield Input(placeholder="Artist, track, album…", id="search-input")
+            yield Input(placeholder="Artist, track, album, playlist…", id="search-input")
             yield Label(self._hint_text(), id="search-hint")
             yield ListView(id="search-results")
 
@@ -39,12 +41,16 @@ class SearchOverlay(ModalScreen):
         self.query_one(Input).focus()
 
     def _hint_text(self) -> str:
-        mode_label = "[bold #1DB954]tracks[/bold #1DB954]  [dim]albums[/dim]" if self._mode == "tracks" \
-            else "[dim]tracks[/dim]  [bold #1DB954]albums[/bold #1DB954]"
-        return f"[dim]Tab to switch ·[/dim]  {mode_label}  [dim]· Enter to search  · a to queue[/dim]"
+        def _tab(name: str) -> str:
+            if name == self._mode:
+                return f"[bold #1DB954]{name}[/bold #1DB954]"
+            return f"[dim]{name}[/dim]"
+        tabs = "  ".join(_tab(m) for m in _MODES)
+        return f"[dim]Tab ·[/dim]  {tabs}  [dim]· Enter · a to queue[/dim]"
 
     def action_toggle_mode(self) -> None:
-        self._mode = "albums" if self._mode == "tracks" else "tracks"
+        idx = (_MODES.index(self._mode) + 1) % len(_MODES)
+        self._mode = _MODES[idx]
         self.query_one("#search-hint", Label).update(self._hint_text())
         query = self.query_one(Input).value.strip()
         if query:
@@ -77,9 +83,11 @@ class SearchOverlay(ModalScreen):
     def _search(self, query: str) -> None:
         try:
             if self._mode == "tracks":
-                results: list[Track | Album] = self.api.search_tracks(query, limit=20)
-            else:
+                results: list[Track | Album | Playlist] = self.api.search_tracks(query, limit=20)
+            elif self._mode == "albums":
                 results = self.api.search_albums(query, limit=15)
+            else:
+                results = self.api.search_playlists(query, limit=15)
         except Exception:
             self.app.call_from_thread(
                 self.query_one("#search-hint", Label).update,
@@ -89,7 +97,7 @@ class SearchOverlay(ModalScreen):
         self._results = results
         self.app.call_from_thread(self._populate, results)
 
-    def _populate(self, results: list[Track | Album]) -> None:
+    def _populate(self, results: list[Track | Album | Playlist]) -> None:
         lv = self.query_one(ListView)
         lv.clear()
         if not results:
@@ -103,16 +111,20 @@ class SearchOverlay(ModalScreen):
                     f"[#1DB954]♪[/#1DB954]  [bold]{item.name}[/bold]"
                     f"  [dim]· {item.artist}  {d // 60}:{d % 60:02d}[/dim]"
                 )))
-            else:
+            elif isinstance(item, Album):
                 lv.append(ListItem(Label(
                     f"[#1DB954]▣[/#1DB954]  [bold]{item.name}[/bold]"
                     f"  [dim]· {item.artist}  {item.total} tracks[/dim]"
                 )))
+            else:  # Playlist
+                lv.append(ListItem(Label(
+                    f"[#1DB954]≡[/#1DB954]  [bold]{item.name}[/bold]"
+                    f"  [dim]{item.total} tracks[/dim]"
+                )))
         lv.focus()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        lv = self.query_one(ListView)
-        idx = lv.index
+        idx = self.query_one(ListView).index
         if idx is not None and 0 <= idx < len(self._results):
             self.dismiss(self._results[idx])
         else:

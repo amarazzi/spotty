@@ -194,6 +194,23 @@ class SpotifyAPI:
     def play_track(self, track_id: str, device_id: str | None = None) -> None:
         self._sp.start_playback(device_id=device_id, uris=[f"spotify:track:{track_id}"])
 
+    def search_playlists(self, query: str, limit: int = 15) -> list[Playlist]:
+        result = self._sp.search(q=query, type="playlist", limit=limit)
+        items = result.get("playlists", {}).get("items", [])
+        playlists = []
+        for p in items:
+            if not p:
+                continue
+            owner = p.get("owner", {}).get("display_name", "")
+            total = p.get("tracks", {}).get("total", 0)
+            playlists.append(Playlist(
+                id=p["id"],
+                name=p["name"],
+                total=total,
+                tracks=[],  # lazy
+            ))
+        return playlists
+
     def search_albums(self, query: str, limit: int = 15) -> list[Album]:
         result = self._sp.search(q=query, type="album", limit=limit)
         items = result.get("albums", {}).get("items", [])

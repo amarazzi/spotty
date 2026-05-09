@@ -357,15 +357,30 @@ class SpottyApp(App):
             pass
 
     def action_search(self) -> None:
+        from spotty.api import Playlist as _Playlist
+
         def on_search_result(result) -> None:
             if not result:
                 return
             if isinstance(result, Album):
                 self._open_album_tracks(result)
+            elif isinstance(result, _Playlist):
+                self._open_playlist_tracks(result)
             else:
                 self._play_track_bg(result.id)
 
         self.push_screen(SearchOverlay(api=self.api), on_search_result)
+
+    def _open_playlist_tracks(self, playlist) -> None:
+        def on_track_selected(selection) -> None:
+            if not selection:
+                return
+            selected_playlist, offset = selection
+            did = self._device_id
+            self._safe_api(lambda: self.api.play_playlist(selected_playlist.id, offset=offset, device_id=did))
+            self.notify(f"▶  {selected_playlist.name}", timeout=3)
+            self._refresh_soon()
+        self.push_screen(PlaylistTracksOverlay(api=self.api, playlist=playlist), on_track_selected)
 
     def _open_album_tracks(self, album: Album) -> None:
         def on_track_selected(selection) -> None:

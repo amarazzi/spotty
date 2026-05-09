@@ -120,7 +120,12 @@ class HomeOverlay(ModalScreen):
             "[dim]Enter to play  ·  a to queue tracks  ·  j/k to navigate[/dim]"
         )
 
-        def _header(title: str) -> None:
+        def _header(title: str, first: bool = False) -> None:
+            if not first:
+                # blank spacer row
+                self._header_indices.add(len(self._items))
+                self._items.append(None)
+                lv.append(ListItem(Label("")))
             idx = len(self._items)
             self._header_indices.add(idx)
             self._items.append(None)
@@ -148,18 +153,21 @@ class HomeOverlay(ModalScreen):
                 f"  [dim]· {t.artist}  {d // 60}:{d % 60:02d}[/dim]"
             )))
 
+        first = True
         if made_for_you:
-            _header("Made For You")
+            _header("Made For You", first=first)
+            first = False
             for p in made_for_you:
                 _playlist_row(p)
 
         if jump_back:
-            _header("Jump Back In")
+            _header("Jump Back In", first=first)
+            first = False
             for a in jump_back:
                 _album_row(a)
 
         if recommended:
-            _header("Recommended For You")
+            _header("Recommended For You", first=first)
             for t in recommended:
                 _track_row(t)
 
