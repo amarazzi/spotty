@@ -474,11 +474,31 @@ class SpotifyAPI:
             ))
         return tracks
 
+    _MADE_FOR_YOU_NAMES = (
+        "daily mix", "discover weekly", "release radar", "daily drive",
+        "on repeat", "repeat rewind", "time capsule", "your top songs",
+        "songs to sing", "chill hits", "fresh finds",
+    )
+
     def made_for_you(self) -> list[Playlist]:
-        """Spotify-curated playlists in the user's library (Daily Mixes, Discover Weekly, etc.)."""
+        """Spotify-curated playlists: checks user library, then searches by well-known names."""
+        seen: set[str] = set()
         playlists: list[Playlist] = []
+
+        def _add(p: dict) -> None:
+            pid = p.get("id")
+            if not pid or pid in seen:
+                return
+            seen.add(pid)
+            playlists.append(Playlist(
+                id=pid,
+                name=p["name"],
+                total=p.get("tracks", {}).get("total", 0),
+            ))
+
+        # Phase 1: user's library, filtered by Spotify ownership or known names
         offset = 0
-        while len(playlists) < 12:
+        while True:
             result = self._sp.current_user_playlists(limit=50, offset=offset)
             items = result.get("items", [])
             if not items:
@@ -486,18 +506,31 @@ class SpotifyAPI:
             for p in items:
                 if not p:
                     continue
-                owner = p.get("owner", {})
-                owner_id = owner.get("id", "")
-                owner_name = owner.get("display_name", "").lower()
-                if owner_id == "spotify" or owner_name == "spotify":
-                    playlists.append(Playlist(
-                        id=p["id"],
-                        name=p["name"],
-                        total=p.get("tracks", {}).get("total", 0),
-                    ))
+                owner_id = p.get("owner", {}).get("id", "")
+                owner_name = p.get("owner", {}).get("display_name", "").lower()
+                name_lower = p.get("name", "").lower()
+                is_spotify = owner_id == "spotify" or owner_name == "spotify"
+                has_keyword = any(kw in name_lower for kw in self._MADE_FOR_YOU_NAMES)
+                if is_spotify or has_keyword:
+                    _add(p)
             if not result.get("next"):
                 break
             offset += 50
+
+        # Phase 2: search for Daily Mix 1-6 and other personalized playlists
+        if len(playlists) < 4:
+            for query in ("Daily Mix", "Discover Weekly", "Release Radar"):
+                try:
+                    res = self._sp.search(q=query, type="playlist", limit=6)
+                    for p in res.get("playlists", {}).get("items", []):
+                        if not p:
+                            continue
+                        owner_id = p.get("owner", {}).get("id", "")
+                        if owner_id == "spotify":
+                            _add(p)
+                except Exception:
+                    pass
+
         return playlists[:12]
 
     def recently_played_albums(self, limit: int = 8) -> list[Album]:
@@ -526,29 +559,45 @@ class SpotifyAPI:
         return albums
 
     def home_recommendations(self, limit: int = 15) -> list[Track]:
-        """Recommended tracks seeded from the user's recent top tracks."""
+        """Recommended tracks seeded from recently played or top tracks."""
+        # Prefer recently played as seeds (most reliable)
         seed_ids: list[str] = []
-        for time_range in ("short_term", "medium_term", "long_term"):
-            try:
-                top = self._sp.current_user_top_tracks(limit=5, time_range=time_range)
-                seed_ids = [t["id"] for t in top.get("items", [])[:5]]
-                if seed_ids:
-                    break
-            except Exception:
-                continue
+        try:
+            recent = self._sp.current_user_recently_played(limit=10)
+            seen: set[str] = set()
+            for item in recent.get("items", []):
+                t = item.get("track")
+                if t and t.get("id") and t["id"] not in seen:
+                    seen.add(t["id"])
+                    seed_ids.append(t["id"])
+                    if len(seed_ids) == 5:
+                        break
+        except Exception:
+            pass
+
+        # Fall back to top tracks
+        if not seed_ids:
+            for time_range in ("short_term", "medium_term", "long_term"):
+                try:
+                    top = self._sp.current_user_top_tracks(limit=5, time_range=time_range)
+                    seed_ids = [t["id"] for t in top.get("items", [])[:5]]
+                    if seed_ids:
+                        break
+                except Exception:
+                    continue
 
         if not seed_ids:
             return []
 
-        def _parse_tracks(items: list) -> list[Track]:
-            tracks: list[Track] = []
+        def _parse(items: list) -> list[Track]:
+            out: list[Track] = []
             for item in items:
                 if not item:
                     continue
                 artists = ", ".join(a["name"] for a in item.get("artists", []))
                 images = item.get("album", {}).get("images", [])
                 cover = images[0]["url"] if images else None
-                tracks.append(Track(
+                out.append(Track(
                     id=item["id"],
                     name=item["name"],
                     artist=artists,
@@ -556,17 +605,16 @@ class SpotifyAPI:
                     duration_ms=item.get("duration_ms", 0),
                     cover_url=cover,
                 ))
-            return tracks
+            return out
 
         try:
-            recs = self._sp.recommendations(seed_tracks=seed_ids, limit=limit)
-            tracks = _parse_tracks(recs.get("tracks", []))
+            recs = self._sp.recommendations(seed_tracks=seed_ids[:5], limit=limit)
+            tracks = _parse(recs.get("tracks", []))
             if tracks:
                 return tracks
         except Exception:
             pass
 
-        # Fallback: top tracks from current artist
         return self._similar_tracks(seed_ids[0], limit=limit)
 
     def recently_played(self, limit: int = 20) -> list[Track]:
