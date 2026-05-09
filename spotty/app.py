@@ -9,12 +9,20 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 
 from spotty.api import Album, SpotifyAPI
+from spotty.messages import AddToQueue
 from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installed as _spotifyd_installed
 from spotty import track_cache
+from spotty import cast_helper
+from spotty import librespot_bridge as _lb
 from spotty.widgets.album_tracks_overlay import AlbumTracksOverlay
+from spotty.widgets.artist_overlay import ArtistOverlay
+from spotty.widgets.devices_overlay import DevicesOverlay
+from spotty.widgets.help_overlay import HelpOverlay
 from spotty.widgets.home_overlay import HomeOverlay
+from spotty.widgets.liked_songs_overlay import LikedSongsOverlay
 from spotty.widgets.lyrics_overlay import LyricsOverlay
 from spotty.widgets.now_playing import NowPlaying
+from spotty.widgets.playlist_tracks_overlay import PlaylistTracksOverlay
 from spotty.widgets.playlists_overlay import PlaylistsOverlay
 from spotty.widgets.queue_overlay import QueueOverlay
 from spotty.widgets.search_overlay import SearchOverlay
@@ -36,6 +44,15 @@ class SpottyApp(App):
         Binding("o", "playlists", "Playlists"),
         Binding("r", "home", "Recent"),
         Binding("u", "queue", "Queue"),
+        Binding("s", "shuffle", "Shuffle"),
+        Binding("x", "repeat", "Repeat"),
+        Binding("h", "like", "Like"),
+        Binding("f", "liked_songs", "Liked"),
+        Binding("i", "artist", "Artist"),
+        Binding("left_square_bracket", "seek_back", "Seek-"),
+        Binding("right_square_bracket", "seek_forward", "Seek+"),
+        Binding("d", "devices", "Devices"),
+        Binding("question_mark", "help", "Help"),
     ]
 
     def __init__(self, api: SpotifyAPI) -> None:
@@ -45,6 +62,13 @@ class SpottyApp(App):
         self._playlists: list = []
         self._connected: bool = False
         self._device_id: str | None = None
+        self._shuffle: bool = False
+        self._repeat: str = "off"  # "off", "track", "context"
+        self._is_playing: bool = False
+        self._last_liked_track_id: str | None = None
+        self._soon_timer = None
+        self._active_bridge: _lb.LibrespotBridge | None = None
+        self._link_proc = None
 
     def compose(self) -> ComposeResult:
         yield NowPlaying(id="now-playing")
@@ -76,9 +100,17 @@ class SpottyApp(App):
         track = self._safe_api(self.api.current_track, silent=True)
         if track is not None:
             track_cache.save(track)
+            self._shuffle = track.shuffle
+            self._repeat = track.repeat
+            self._is_playing = track.is_playing
         else:
             track = track_cache.load()
-        self.query_one(NowPlaying).set_ready(track)
+        np = self.query_one(NowPlaying)
+        np.set_ready(track)
+        np.volume = self._volume
+        if track:
+            self._last_liked_track_id = track.id
+            self._fetch_liked(track.id)
         self.set_interval(3, self._refresh)
 
     # ------------------------------------------------------------------
@@ -88,15 +120,33 @@ class SpottyApp(App):
     def _refresh(self) -> None:
         if not self._connected:
             return
+        self._refresh_bg()
+
+    @work(thread=True, exclusive=True, name="refresh")
+    def _refresh_bg(self) -> None:
         track = self._safe_api(self.api.current_track, silent=True)
         if track is not None:
             track_cache.save(track)
+            self._shuffle = track.shuffle
+            self._repeat = track.repeat
+            self._is_playing = track.is_playing
         else:
             track = track_cache.load()
-        self.query_one(NowPlaying).update_track(track)
+
+        def _apply(t):
+            np = self.query_one(NowPlaying)
+            np.update_track(t)
+            np.volume = self._volume
+            if t and t.id != self._last_liked_track_id:
+                self._last_liked_track_id = t.id
+                self._fetch_liked(t.id)
+
+        self.call_from_thread(_apply, track)
 
     def _refresh_soon(self) -> None:
-        self.set_timer(0.6, self._refresh)
+        if self._soon_timer is not None:
+            self._soon_timer.stop()
+        self._soon_timer = self.set_timer(0.6, self._refresh)
 
     def _check_skipped(self, prev_id: str | None) -> None:
         """After next_track, if the track didn't change Spotify had no context — play something similar."""
@@ -131,43 +181,163 @@ class SpottyApp(App):
         if not self._connected:
             self.notify("Still connecting…", timeout=2)
             return
-        cached = track_cache.load()
-        fallback = f"spotify:track:{cached.id}" if cached else None
-        did = self._device_id
-        self._safe_api(lambda: self.api.play_pause(fallback_uri=fallback, device_id=did))
+        self._play_pause_bg(self._is_playing)
+        self._is_playing = not self._is_playing
         self._refresh_soon()
+
+    @work(thread=True, name="play-pause")
+    def _play_pause_bg(self, is_playing: bool) -> None:
+        # No device_id — pause/resume always targets the currently active device
+        if is_playing:
+            self._safe_api(lambda: self.api.pause())
+        else:
+            self._safe_api(lambda: self.api.resume())
 
     def action_next_track(self) -> None:
         if not self._connected:
             self.notify("Still connecting…", timeout=2)
             return
-        did = self._device_id
         prev = track_cache.load()
         prev_id = prev.id if prev else None
-        self._safe_api(lambda: self.api.next_track(device_id=did))
+        did = self._device_id
+        self._next_bg(did)
         self.set_timer(1.2, lambda: self._check_skipped(prev_id))
+
+    @work(thread=True, name="next")
+    def _next_bg(self, device_id: str | None) -> None:
+        self._safe_api(lambda: self.api.next_track(device_id=device_id))
 
     def action_previous_track(self) -> None:
         if not self._connected:
             self.notify("Still connecting…", timeout=2)
             return
         did = self._device_id
-        self._safe_api(lambda: self.api.previous_track(device_id=did))
+        self._previous_bg(did)
         self._refresh_soon()
+
+    @work(thread=True, name="prev")
+    def _previous_bg(self, device_id: str | None) -> None:
+        self._safe_api(lambda: self.api.previous_track(device_id=device_id))
 
     def action_volume_up(self) -> None:
         self._volume = min(100, self._volume + 5)
-        self._safe_api(lambda: self.api.set_volume(self._volume))
+        self.query_one(NowPlaying).volume = self._volume
         self.notify(f"Volume: {self._volume}%", timeout=1)
+        self._set_volume_bg(self._volume)
 
     def action_volume_down(self) -> None:
         self._volume = max(0, self._volume - 5)
-        self._safe_api(lambda: self.api.set_volume(self._volume))
+        self.query_one(NowPlaying).volume = self._volume
         self.notify(f"Volume: {self._volume}%", timeout=1)
+        self._set_volume_bg(self._volume)
+
+    @work(thread=True, exclusive=True, name="volume")
+    def _set_volume_bg(self, vol: int) -> None:
+        self._safe_api(lambda: self.api.set_volume(vol))
+
+    def action_seek_forward(self) -> None:
+        if not self._connected:
+            return
+        self._seek_by(10_000)
+
+    def action_seek_back(self) -> None:
+        if not self._connected:
+            return
+        self._seek_by(-10_000)
+
+    @work(thread=True, name="seek")
+    def _seek_by(self, delta_ms: int) -> None:
+        pb = self._safe_api(self.api.current_track, silent=True)
+        if not pb:
+            return
+        target = max(0, min(pb.progress_ms + delta_ms, pb.duration_ms - 500))
+        self._safe_api(lambda: self.api.seek(target))
+        self.call_from_thread(self._refresh_soon)
+
+    def action_shuffle(self) -> None:
+        if not self._connected:
+            return
+        self._shuffle = not self._shuffle
+        self.query_one(NowPlaying).shuffle = self._shuffle
+        self.notify("Shuffle " + ("on" if self._shuffle else "off"), timeout=1)
+        self._shuffle_bg(self._shuffle)
+
+    @work(thread=True, exclusive=True, name="shuffle")
+    def _shuffle_bg(self, state: bool) -> None:
+        self._safe_api(lambda: self.api.toggle_shuffle(state))
+
+    def action_repeat(self) -> None:
+        if not self._connected:
+            return
+        cycle = {"off": "context", "context": "track", "track": "off"}
+        self._repeat = cycle.get(self._repeat, "off")
+        self.query_one(NowPlaying).repeat = self._repeat
+        self.notify(f"Repeat: {self._repeat}", timeout=1)
+        self._repeat_bg(self._repeat)
+
+    @work(thread=True, exclusive=True, name="repeat")
+    def _repeat_bg(self, state: str) -> None:
+        self._safe_api(lambda: self.api.set_repeat(state))
+
+    def action_like(self) -> None:
+        if not self._connected:
+            return
+        track = track_cache.load()
+        if not track:
+            self.notify("No track playing", timeout=2)
+            return
+        np = self.query_one(NowPlaying)
+        new_liked = not np.is_liked
+        np.is_liked = new_liked
+        self.notify("heart" if new_liked else "unheart", timeout=2)
+        self._like_bg(track.id, new_liked)
+
+    @work(thread=True, name="like")
+    def _like_bg(self, track_id: str, like: bool) -> None:
+        try:
+            if like:
+                self.api.like_track(track_id)
+            else:
+                self.api.unlike_track(track_id)
+        except Exception:
+            self.call_from_thread(
+                lambda: setattr(self.query_one(NowPlaying), "is_liked", not like)
+            )
+
+    @work(thread=True, exclusive=True, name="fetch-liked")
+    def _fetch_liked(self, track_id: str) -> None:
+        is_liked = self._safe_api(lambda: self.api.is_track_liked(track_id), silent=True)
+        if is_liked is None:
+            is_liked = False
+        self.call_from_thread(lambda: setattr(self.query_one(NowPlaying), "is_liked", is_liked))
+
+    # ------------------------------------------------------------------
+    # AddToQueue message handler
+    # ------------------------------------------------------------------
+
+    def on_add_to_queue(self, event: AddToQueue) -> None:
+        self._do_add_to_queue(event.track_id)
+
+    @work(thread=True, name="add-queue")
+    def _do_add_to_queue(self, track_id: str) -> None:
+        did = self._device_id
+        try:
+            self.api.add_to_queue(track_id, device_id=did)
+            self.call_from_thread(self.notify, "Added to queue", timeout=2)
+        except Exception as e:
+            self.call_from_thread(
+                self.notify, f"Queue error: {e}", severity="error", timeout=3
+            )
 
     # ------------------------------------------------------------------
     # Actions — overlays
     # ------------------------------------------------------------------
+
+    @work(thread=True, name="play-track")
+    def _play_track_bg(self, track_id: str) -> None:
+        did = self._device_id
+        self._safe_api(lambda: self.api.play_track(track_id, device_id=did))
+        self.call_from_thread(self._refresh_soon)
 
     def action_search(self) -> None:
         def on_search_result(result) -> None:
@@ -176,9 +346,7 @@ class SpottyApp(App):
             if isinstance(result, Album):
                 self._open_album_tracks(result)
             else:
-                did = self._device_id
-                self._safe_api(lambda: self.api.play_track(result.id, device_id=did))
-                self._refresh_soon()
+                self._play_track_bg(result.id)
 
         self.push_screen(SearchOverlay(api=self.api), on_search_result)
 
@@ -195,45 +363,253 @@ class SpottyApp(App):
         self.push_screen(AlbumTracksOverlay(api=self.api, album=album), on_track_selected)
 
     def action_playlists(self) -> None:
-        def on_result(playlist) -> None:
-            if playlist:
+        def on_playlist_selected(playlist) -> None:
+            if not playlist:
+                return
+            def on_track_selected(selection) -> None:
+                if not selection:
+                    return
+                selected_playlist, offset = selection
                 did = self._device_id
-                self._safe_api(lambda: self.api.play_playlist(playlist.id, device_id=did))
-                self.notify(f"▶  {playlist.name}", timeout=3)
+                self._safe_api(lambda: self.api.play_playlist(selected_playlist.id, offset=offset, device_id=did))
+                self.notify(f"▶  {selected_playlist.name}", timeout=3)
                 self._refresh_soon()
+            self.push_screen(PlaylistTracksOverlay(api=self.api, playlist=playlist), on_track_selected)
 
-        self.push_screen(PlaylistsOverlay(api=self.api, playlists=self._playlists), on_result)
+        self.push_screen(PlaylistsOverlay(api=self.api, playlists=self._playlists), on_playlist_selected)
 
     def action_home(self) -> None:
         def on_result(track) -> None:
             if track:
-                did = self._device_id
-                self._safe_api(lambda: self.api.play_track(track.id, device_id=did))
-                self._refresh_soon()
+                self._play_track_bg(track.id)
 
         self.push_screen(HomeOverlay(api=self.api), on_result)
 
     def action_queue(self) -> None:
-        def on_result(track) -> None:
-            if track:
-                did = self._device_id
-                self._safe_api(lambda: self.api.play_track(track.id, device_id=did))
-                self._refresh_soon()
+        def on_result(result) -> None:
+            if not result:
+                return
+            track, remaining, is_recs = result
+            if is_recs and remaining:
+                self._play_with_recs_bg(track.id, [t.id for t in remaining])
+            else:
+                self._play_track_bg(track.id)
 
-        current = self._safe_api(self.api.current_track, silent=True)
-        if current is None:
-            current = track_cache.load()
+        current = track_cache.load()
         seed_id = current.id if current else None
         self.push_screen(QueueOverlay(api=self.api, current_track_id=seed_id), on_result)
 
+    @work(thread=True, name="play-recs")
+    def _play_with_recs_bg(self, track_id: str, queue_ids: list[str]) -> None:
+        did = self._device_id
+        for qid in queue_ids:
+            try:
+                self.api.add_to_queue(qid, device_id=did)
+            except Exception:
+                pass
+        self._safe_api(lambda: self.api.play_track(track_id, device_id=did))
+        self.call_from_thread(self._refresh_soon)
+
     def action_lyrics(self) -> None:
-        track = track_cache.load()
+        self._open_lyrics()
+
+    @work(thread=True, name="open-lyrics")
+    def _open_lyrics(self) -> None:
+        # Fresh API call so progress_ms is accurate for sync
+        track = self._safe_api(self.api.current_track, silent=True)
         if not track:
-            track = self._safe_api(self.api.current_track, silent=True)
+            track = track_cache.load()
         if not track:
-            self.notify("No track playing", timeout=2)
+            self.call_from_thread(self.notify, "No track playing", timeout=2)
             return
-        self.push_screen(LyricsOverlay(track_name=track.name, artist=track.artist))
+        self.call_from_thread(lambda: self.push_screen(LyricsOverlay(track=track)))
+
+    def action_liked_songs(self) -> None:
+        def on_result(track) -> None:
+            if track:
+                self._play_track_bg(track.id)
+        self.push_screen(LikedSongsOverlay(api=self.api), on_result)
+
+    def action_artist(self) -> None:
+        track = track_cache.load()
+        artist_id = track.artist_id if track else None
+        artist_name = track.artist if track else None
+        if not artist_id:
+            fresh = self._safe_api(self.api.current_track, silent=True)
+            if fresh:
+                artist_id = fresh.artist_id
+                artist_name = fresh.artist
+        if not artist_id:
+            self.notify("Artist info unavailable", timeout=2)
+            return
+        def on_result(t) -> None:
+            if t:
+                self._play_track_bg(t.id)
+        self.push_screen(ArtistOverlay(api=self.api, artist_id=artist_id, artist_name=artist_name or ""), on_result)
+
+    def action_devices(self) -> None:
+        def on_result(device) -> None:
+            if not device:
+                return
+            name = device.get("name", "")
+            if "_cast_info" in device:
+                self._bridge_cast_bg(device["_cast_info"], name)
+            else:
+                self._stop_bridge()
+                self._transfer_bg(device["id"], name)
+
+        self.push_screen(DevicesOverlay(api=self.api), on_result)
+
+    @work(thread=True, name="transfer")
+    def _transfer_bg(self, device_id: str, name: str) -> None:
+        try:
+            self.api.transfer_playback(device_id, force_play=False)
+            self._device_id = device_id
+            self.call_from_thread(self.notify, f"▸  {name}", timeout=3)
+            self.call_from_thread(self._refresh_soon)
+        except Exception as e:
+            self.call_from_thread(self.notify, f"Transfer failed: {e}", severity="error", timeout=3)
+
+    def _stop_bridge(self) -> None:
+        if self._active_bridge:
+            self._active_bridge.stop()
+            self._active_bridge = None
+        if self._link_proc:
+            try:
+                self._link_proc.kill()
+            except Exception:
+                pass
+            self._link_proc = None
+
+    @work(thread=True, name="cast-bridge")
+    def _bridge_cast_bg(self, cast_info, cast_name: str) -> None:
+        import time as _t
+
+        if not _lb.is_librespot_installed():
+            self.call_from_thread(
+                self.notify,
+                "librespot no instalado — corré: brew install librespot",
+                severity="error", timeout=7,
+            )
+            return
+        if not _lb.is_ffmpeg_installed():
+            self.call_from_thread(
+                self.notify,
+                "ffmpeg no instalado — corré: brew install ffmpeg",
+                severity="error", timeout=7,
+            )
+            return
+
+        self._stop_bridge()
+
+        # ── First time: need to capture credentials ──────────────────────
+        if not _lb.has_credentials():
+            bridge = _lb.LibrespotBridge()
+            self.call_from_thread(
+                self.notify,
+                "Setup único: abrí Spotify → Dispositivos → 'spotty-bridge' → esperá",
+                timeout=60,
+            )
+            link_proc = bridge.link()
+            if not link_proc:
+                self.call_from_thread(
+                    self.notify, "Error iniciando librespot", severity="error", timeout=4
+                )
+                return
+            self._link_proc = link_proc
+
+            deadline = _t.monotonic() + 180
+            while _t.monotonic() < deadline:
+                if _lb.has_credentials():
+                    break
+                _t.sleep(1.0)
+
+            try:
+                link_proc.kill()
+            except Exception:
+                pass
+            self._link_proc = None
+
+            if not _lb.has_credentials():
+                self.call_from_thread(
+                    self.notify, "Timeout — intentá de nuevo", severity="warning", timeout=5
+                )
+                return
+
+            _t.sleep(1.0)  # brief pause so librespot releases ports
+
+        # ── Start bridge pipeline ─────────────────────────────────────────
+        self.call_from_thread(self.notify, f"Conectando a {cast_name}…", timeout=25)
+        bridge = _lb.LibrespotBridge()
+        url = bridge.start()
+
+        if not url:
+            self.call_from_thread(
+                self.notify,
+                "Error iniciando bridge — credenciales vencidas, intentá de nuevo",
+                severity="error", timeout=6,
+            )
+            # Remove stale credentials so next attempt re-links
+            try:
+                import os as _os
+                _os.remove(_lb.CREDS_FILE)
+            except Exception:
+                pass
+            return
+
+        self._active_bridge = bridge
+
+        # ── Tell the Cast device to play the HTTP stream ──────────────────
+        ok = cast_helper.cast_url(cast_info, url)
+        if not ok:
+            self.call_from_thread(
+                self.notify, f"No se pudo conectar a {cast_name}", severity="error", timeout=5
+            )
+            bridge.stop()
+            self._active_bridge = None
+            return
+
+        # ── Wait for 'spotty-bridge' to register in Spotify Connect ───────
+        bridge_device_id = None
+        deadline = _t.monotonic() + 20
+        while _t.monotonic() < deadline:
+            try:
+                for d in self.api.available_devices():
+                    if d.get("name") == _lb.BRIDGE_NAME:
+                        bridge_device_id = d["id"]
+                        break
+                if bridge_device_id:
+                    break
+            except Exception:
+                pass
+            _t.sleep(1.5)
+
+        if not bridge_device_id:
+            self.call_from_thread(
+                self.notify,
+                "'spotty-bridge' no aparece en Spotify — intentá de nuevo",
+                severity="warning", timeout=7,
+            )
+            bridge.stop()
+            self._active_bridge = None
+            return
+
+        # ── Transfer playback ─────────────────────────────────────────────
+        try:
+            self.api.transfer_playback(bridge_device_id, force_play=True)
+            self._device_id = bridge_device_id
+            self.call_from_thread(self.notify, f"▸  {cast_name}", timeout=3)
+            self.call_from_thread(self._refresh_soon)
+        except Exception as e:
+            self.call_from_thread(
+                self.notify, f"Transfer error: {e}", severity="error", timeout=4
+            )
+
+    def action_help(self) -> None:
+        self.push_screen(HelpOverlay())
+
+    def on_unmount(self) -> None:
+        self._stop_bridge()
 
     # ------------------------------------------------------------------
     # spotifyd connection
@@ -252,6 +628,10 @@ class SpottyApp(App):
                     if device:
                         self._device_id = device["id"]
                         self.api.transfer_playback(device["id"], force_play=False)
+                        try:
+                            self.api.pause()
+                        except Exception:
+                            pass
                         break
                 except Exception:
                     pass
@@ -272,6 +652,7 @@ class SpottyApp(App):
                         return fn()
                     except SpotifyException:
                         pass
+                    return None  # device activated (force_play handled it)
                 if not silent:
                     self.notify(
                         "No device found — open Spotify on any device",
@@ -298,7 +679,7 @@ class SpottyApp(App):
             devices = self.api.available_devices()
             if not devices:
                 return False
-            preferred = next((d for d in devices if d.get("name") == "spotty"), None)
+            preferred = next((d for d in devices if d.get("name") == _SPOTIFYD_DEVICE), None)
             device = preferred or devices[0]
             self.api.transfer_playback(device["id"], force_play=True)
             return True

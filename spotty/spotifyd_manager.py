@@ -72,7 +72,7 @@ def _launch() -> bool:
                 "--device-name", DEVICE_NAME,
                 "--cache-path", str(_CACHE_DIR),
                 "--disable-discovery=true",
-                "--autoplay=true",
+                "--autoplay=false",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

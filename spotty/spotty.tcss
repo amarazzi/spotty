@@ -68,6 +68,12 @@ NowPlaying.loading {
     margin-bottom: 2;
 }
 
+#np-status {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 1;
+}
+
 #np-hints {
     width: 100%;
     text-align: center;
@@ -75,15 +81,17 @@ NowPlaying.loading {
 }
 
 /* ── Modals ── */
-SearchOverlay, PlaylistsOverlay, HomeOverlay, QueueOverlay, AlbumTracksOverlay, LyricsOverlay {
+SearchOverlay, PlaylistsOverlay, HomeOverlay, QueueOverlay, AlbumTracksOverlay, LyricsOverlay,
+LikedSongsOverlay, ArtistOverlay, PlaylistTracksOverlay, HelpOverlay, DevicesOverlay {
     align: center middle;
 }
 
 #modal-container, #search-container {
-    background: #181818;
-    border: solid #1DB954;
-    width: 72;
-    height: 32;
+    background: #1c1c1c;
+    width: 90%;
+    max-width: 72;
+    height: 85%;
+    max-height: 32;
     padding: 1 2;
     layout: vertical;
 }
@@ -100,20 +108,20 @@ SearchOverlay, PlaylistsOverlay, HomeOverlay, QueueOverlay, AlbumTracksOverlay, 
 }
 
 #search-input {
-    border: solid #282828;
-    background: #282828;
+    border: none;
+    background: #242424;
     color: #FFFFFF;
     margin-bottom: 1;
 }
 
 #search-input:focus {
-    border: solid #1DB954;
+    border: none;
+    background: #2a2a2a;
 }
 
 #search-results, #playlist-list, #home-list {
-    background: #121212;
+    background: #141414;
     height: 1fr;
-    border: solid #282828;
 }
 
 #search-results > ListItem,
@@ -139,20 +147,70 @@ SearchOverlay, PlaylistsOverlay, HomeOverlay, QueueOverlay, AlbumTracksOverlay, 
     border-left: tall #1DB954;
 }
 
+/* ── Artist ── */
+#artist-container {
+    background: #1c1c1c;
+    width: 95%;
+    max-width: 92;
+    height: 92%;
+    max-height: 44;
+    padding: 1 2;
+    layout: vertical;
+}
+
+#artist-top {
+    height: 12;
+    width: 100%;
+    layout: horizontal;
+    margin-bottom: 1;
+}
+
+.artist-art {
+    width: 22;
+    height: 10;
+    margin-right: 2;
+}
+
+#artist-info {
+    width: 1fr;
+    height: 100%;
+    layout: vertical;
+    padding: 0 1;
+}
+
+#artist-genres {
+    margin-bottom: 1;
+}
+
+#artist-bio {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#artist-stats {
+    color: #909090;
+}
+
+#artist-sep {
+    height: 1;
+    width: 100%;
+    margin-bottom: 1;
+}
+
 /* ── Lyrics ── */
 #lyrics-container {
-    background: #181818;
-    border: solid #1DB954;
-    width: 80;
-    height: 40;
+    background: #1c1c1c;
+    width: 92%;
+    max-width: 80;
+    height: 90%;
+    max-height: 40;
     padding: 1 2;
     layout: vertical;
 }
 
 #lyrics-scroll {
     height: 1fr;
-    background: #121212;
-    border: solid #282828;
+    background: #141414;
 }
 
 #lyrics-text {

@@ -1,4 +1,4 @@
-"""Album tracklist modal — shown when selecting an album from search."""
+"""Playlist tracklist modal — shown when selecting a playlist."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Label, ListItem, ListView
 
-from spotty.api import Album, SpotifyAPI, Track
+from spotty.api import Playlist, SpotifyAPI, Track
 from spotty.messages import AddToQueue
 
 
-class AlbumTracksOverlay(ModalScreen):
+class PlaylistTracksOverlay(ModalScreen):
     BINDINGS = [
         Binding("escape", "dismiss", "Close", show=False),
         Binding("j", "cursor_down", "", show=False),
@@ -21,16 +21,16 @@ class AlbumTracksOverlay(ModalScreen):
         Binding("a", "add_to_queue", "", show=False),
     ]
 
-    def __init__(self, api: SpotifyAPI, album: Album, **kwargs) -> None:
+    def __init__(self, api: SpotifyAPI, playlist: Playlist, **kwargs) -> None:
         super().__init__(**kwargs)
         self.api = api
-        self.album = album
+        self.playlist = playlist
         self._tracks: list[Track] = []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-container"):
-            yield Label(f" {self.album.name}", id="modal-title")
-            yield Label(f"[dim]{self.album.artist}[/dim]", id="modal-hint")
+            yield Label(f" {self.playlist.name}", id="modal-title")
+            yield Label("[dim]Loading…[/dim]", id="modal-hint")
             yield ListView(id="home-list")
 
     def on_mount(self) -> None:
@@ -47,10 +47,10 @@ class AlbumTracksOverlay(ModalScreen):
         if idx is not None and 0 <= idx < len(self._tracks):
             self.post_message(AddToQueue(self._tracks[idx].id))
 
-    @work(thread=True, exclusive=True, name="album-tracks")
+    @work(thread=True, exclusive=True, name="playlist-tracks")
     def _load(self) -> None:
         try:
-            tracks = self.api.album_tracks(self.album.id)
+            tracks = self.api.playlist_tracks(self.playlist.id)
         except Exception as e:
             self.app.call_from_thread(
                 self.query_one("#modal-hint", Label).update,
@@ -67,7 +67,7 @@ class AlbumTracksOverlay(ModalScreen):
             self.query_one("#modal-hint", Label).update("[dim]No tracks found[/dim]")
             return
         self.query_one("#modal-hint", Label).update(
-            f"[dim]{self.album.artist}  ·  {len(tracks)} tracks — Enter to play from here  ·  a to queue[/dim]"
+            f"[dim]{len(tracks)} tracks — Enter to play from here  ·  a to queue[/dim]"
         )
         for i, t in enumerate(tracks, 1):
             d = t.duration_ms // 1000
@@ -80,6 +80,6 @@ class AlbumTracksOverlay(ModalScreen):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         idx = self.query_one(ListView).index
         if idx is not None and 0 <= idx < len(self._tracks):
-            self.dismiss((self.album, idx))
+            self.dismiss((self.playlist, idx))
         else:
             self.dismiss(None)

@@ -10,6 +10,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Label, ListItem, ListView
 
 from spotty.api import Album, SpotifyAPI, Track
+from spotty.messages import AddToQueue
 
 
 class SearchOverlay(ModalScreen):
@@ -18,6 +19,7 @@ class SearchOverlay(ModalScreen):
         Binding("tab", "toggle_mode", "Albums/Tracks", show=False),
         Binding("j", "cursor_down", "", show=False),
         Binding("k", "cursor_up", "", show=False),
+        Binding("a", "add_to_queue", "", show=False),
     ]
 
     def __init__(self, api: SpotifyAPI, **kwargs) -> None:
@@ -39,7 +41,7 @@ class SearchOverlay(ModalScreen):
     def _hint_text(self) -> str:
         mode_label = "[bold #1DB954]tracks[/bold #1DB954]  [dim]albums[/dim]" if self._mode == "tracks" \
             else "[dim]tracks[/dim]  [bold #1DB954]albums[/bold #1DB954]"
-        return f"[dim]Tab to switch ·[/dim]  {mode_label}  [dim]· Enter to search[/dim]"
+        return f"[dim]Tab to switch ·[/dim]  {mode_label}  [dim]· Enter to search  · a to queue[/dim]"
 
     def action_toggle_mode(self) -> None:
         self._mode = "albums" if self._mode == "tracks" else "tracks"
@@ -62,6 +64,14 @@ class SearchOverlay(ModalScreen):
 
     def action_cursor_up(self) -> None:
         self.query_one(ListView).action_cursor_up()
+
+    def action_add_to_queue(self) -> None:
+        lv = self.query_one(ListView)
+        idx = lv.index
+        if idx is not None and 0 <= idx < len(self._results):
+            item = self._results[idx]
+            if isinstance(item, Track):
+                self.post_message(AddToQueue(item.id))
 
     @work(thread=True, exclusive=True, name="search")
     def _search(self, query: str) -> None:

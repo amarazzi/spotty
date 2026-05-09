@@ -10,6 +10,7 @@ from PIL import Image as PILImage
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Label, Static
 
@@ -58,6 +59,13 @@ def _render_bar(width: int, pct: int) -> str:
 
 class NowPlaying(Widget):
 
+    shuffle: reactive[bool] = reactive(False)
+    repeat: reactive[str] = reactive("off")
+    is_liked: reactive[bool] = reactive(False)
+    volume: reactive[int] = reactive(50)
+
+    _HINTS = "[dim]  /  search    space  ▶⏸    n  →    p  ←    ?[/dim]"
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._last_cover: str | None = None
@@ -83,14 +91,11 @@ class NowPlaying(Widget):
         yield Label("", id="np-album")
         yield Static("", id="np-bar")
         yield Label("", id="np-time")
-        yield Label(
-            "[dim]  /  search    l  lyrics    o  playlists    r  recent    u  queue"
-            "    space  ▶⏸    n  →    p  ←[/dim]",
-            id="np-hints",
-        )
+        yield Label("", id="np-status")
+        yield Label(self._HINTS, id="np-hints")
 
     def on_mount(self) -> None:
-        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time", "np-hints"):
+        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time", "np-status", "np-hints"):
             self.query_one(f"#{wid}").display = False
         self.add_class("loading")
         self.set_interval(0.1, self._spin)
@@ -108,6 +113,40 @@ class NowPlaying(Widget):
         )
 
     # ------------------------------------------------------------------
+    # Reactives
+    # ------------------------------------------------------------------
+
+    def _render_status(self) -> str:
+        shuf = "[bold #1DB954]⇌[/]" if self.shuffle else "[#383838]⇌[/]"
+        if self.repeat == "track":
+            rep = "[bold #1DB954]↻¹[/]"
+        elif self.repeat == "context":
+            rep = "[bold #1DB954]↻[/]"
+        else:
+            rep = "[#383838]↻[/]"
+        like = "[bold #E8115B]♥[/]" if self.is_liked else "[#383838]♡[/]"
+        vol = f"[#505050]{self.volume}%[/]"
+        return f"  {shuf}    {rep}    {like}    {vol}"
+
+    def watch_shuffle(self, _: bool) -> None:
+        self._update_status_label()
+
+    def watch_repeat(self, _: str) -> None:
+        self._update_status_label()
+
+    def watch_is_liked(self, _: bool) -> None:
+        self._update_status_label()
+
+    def watch_volume(self, _: int) -> None:
+        self._update_status_label()
+
+    def _update_status_label(self) -> None:
+        try:
+            self.query_one("#np-status", Label).update(self._render_status())
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
     # Progress tick
     # ------------------------------------------------------------------
 
@@ -122,7 +161,6 @@ class NowPlaying(Widget):
             return
 
         if not self._is_playing:
-            # Paused: show static position without advancing
             pct = int(self._progress_ms / self._duration_ms * 100)
             if w:
                 bar.update(_render_bar(w, pct))
@@ -150,7 +188,7 @@ class NowPlaying(Widget):
         self._loading = False
         self.remove_class("loading")
         self.query_one("#np-loading").display = False
-        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time", "np-hints"):
+        for wid in ("np-art-row", "np-name", "np-artist", "np-album", "np-bar", "np-time", "np-status", "np-hints"):
             self.query_one(f"#{wid}").display = True
         self.update_track(track)
         self.call_after_refresh(self._tick)
@@ -182,6 +220,10 @@ class NowPlaying(Widget):
         name_lbl.update(f"[bold]{icon}  {track.name}[/bold]")
         artist_lbl.update(f"[green]{track.artist}[/green]")
         album_lbl.update(f"[dim]{track.album}[/dim]")
+
+        # Update shuffle/repeat from track state
+        self.shuffle = track.shuffle
+        self.repeat = track.repeat
 
         if track.cover_url and track.cover_url != self._last_cover:
             self._last_cover = track.cover_url

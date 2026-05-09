@@ -1,4 +1,4 @@
-"""Album tracklist modal — shown when selecting an album from search."""
+"""Liked songs modal — f to open, shows saved tracks."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Label, ListItem, ListView
 
-from spotty.api import Album, SpotifyAPI, Track
+from spotty.api import SpotifyAPI, Track
 from spotty.messages import AddToQueue
 
 
-class AlbumTracksOverlay(ModalScreen):
+class LikedSongsOverlay(ModalScreen):
     BINDINGS = [
         Binding("escape", "dismiss", "Close", show=False),
         Binding("j", "cursor_down", "", show=False),
@@ -21,16 +21,15 @@ class AlbumTracksOverlay(ModalScreen):
         Binding("a", "add_to_queue", "", show=False),
     ]
 
-    def __init__(self, api: SpotifyAPI, album: Album, **kwargs) -> None:
+    def __init__(self, api: SpotifyAPI, **kwargs) -> None:
         super().__init__(**kwargs)
         self.api = api
-        self.album = album
         self._tracks: list[Track] = []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-container"):
-            yield Label(f" {self.album.name}", id="modal-title")
-            yield Label(f"[dim]{self.album.artist}[/dim]", id="modal-hint")
+            yield Label(" Liked songs", id="modal-title")
+            yield Label("[dim]Loading…[/dim]", id="modal-hint")
             yield ListView(id="home-list")
 
     def on_mount(self) -> None:
@@ -47,14 +46,14 @@ class AlbumTracksOverlay(ModalScreen):
         if idx is not None and 0 <= idx < len(self._tracks):
             self.post_message(AddToQueue(self._tracks[idx].id))
 
-    @work(thread=True, exclusive=True, name="album-tracks")
+    @work(thread=True, exclusive=True, name="liked")
     def _load(self) -> None:
         try:
-            tracks = self.api.album_tracks(self.album.id)
-        except Exception as e:
+            tracks = self.api.liked_tracks()
+        except Exception:
             self.app.call_from_thread(
                 self.query_one("#modal-hint", Label).update,
-                f"[red]{e}[/red]",
+                "[red]Failed to load — check connection[/red]",
             )
             return
         self._tracks = tracks
@@ -64,15 +63,15 @@ class AlbumTracksOverlay(ModalScreen):
         lv = self.query_one(ListView)
         lv.clear()
         if not tracks:
-            self.query_one("#modal-hint", Label).update("[dim]No tracks found[/dim]")
+            self.query_one("#modal-hint", Label).update("[dim]No liked songs[/dim]")
             return
         self.query_one("#modal-hint", Label).update(
-            f"[dim]{self.album.artist}  ·  {len(tracks)} tracks — Enter to play from here  ·  a to queue[/dim]"
+            f"[dim]{len(tracks)} tracks — Enter to play  ·  a to queue[/dim]"
         )
-        for i, t in enumerate(tracks, 1):
+        for t in tracks:
             d = t.duration_ms // 1000
             lv.append(ListItem(Label(
-                f"[dim]{i:2}[/dim]  [bold]{t.name}[/bold]"
+                f"[#E8115B]♥[/#E8115B]  [bold]{t.name}[/bold]"
                 f"  [dim]· {t.artist}  {d // 60}:{d % 60:02d}[/dim]"
             )))
         lv.focus()
@@ -80,6 +79,6 @@ class AlbumTracksOverlay(ModalScreen):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         idx = self.query_one(ListView).index
         if idx is not None and 0 <= idx < len(self._tracks):
-            self.dismiss((self.album, idx))
+            self.dismiss(self._tracks[idx])
         else:
             self.dismiss(None)

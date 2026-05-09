@@ -18,6 +18,20 @@ class Track:
     cover_url: str | None = None
     is_playing: bool = False
     progress_ms: int = 0
+    artist_id: str | None = None
+    shuffle: bool = False
+    repeat: str = "off"  # "off", "track", "context"
+
+
+@dataclass
+class ArtistInfo:
+    id: str
+    name: str
+    genres: list[str]
+    followers: int
+    popularity: int
+    image_url: str | None
+    top_tracks: list["Track"]
 
 
 @dataclass
@@ -39,6 +53,7 @@ class Playlist:
 class SpotifyAPI:
     def __init__(self, client: spotipy.Spotify) -> None:
         self._sp = client
+        self._last_device_id: str | None = None
 
     # ------------------------------------------------------------------
     # Playback state
@@ -48,10 +63,14 @@ class SpotifyAPI:
         pb = self._sp.current_playback()
         if not pb or not pb.get("item"):
             return None
+        device = pb.get("device") or {}
+        if device.get("id"):
+            self._last_device_id = device["id"]
         item = pb["item"]
         artists = ", ".join(a["name"] for a in item["artists"])
         images = item["album"].get("images", [])
         cover = images[0]["url"] if images else None
+        artist_id = item["artists"][0]["id"] if item.get("artists") else None
         return Track(
             id=item["id"],
             name=item["name"],
@@ -60,7 +79,10 @@ class SpotifyAPI:
             duration_ms=item["duration_ms"],
             cover_url=cover,
             is_playing=pb["is_playing"],
-            progress_ms=pb.get("progress_ms", 0),
+            progress_ms=pb.get("progress_ms") or 0,
+            artist_id=artist_id,
+            shuffle=pb.get("shuffle_state", False),
+            repeat=pb.get("repeat_state", "off"),
         )
 
     # ------------------------------------------------------------------
@@ -77,6 +99,12 @@ class SpotifyAPI:
             self._sp.start_playback(device_id=device_id, uris=[fallback_uri])
         else:
             self._sp.start_playback(device_id=device_id)
+
+    def pause(self, device_id: str | None = None) -> None:
+        self._sp.pause_playback(device_id=device_id or self._last_device_id)
+
+    def resume(self, device_id: str | None = None) -> None:
+        self._sp.start_playback(device_id=device_id or self._last_device_id)
 
     def next_track(self, device_id: str | None = None) -> None:
         self._sp.next_track(device_id=device_id)
@@ -192,6 +220,7 @@ class SpotifyAPI:
                 artist=artists,
                 album="",
                 duration_ms=item["duration_ms"],
+                artist_id=item["artists"][0]["id"] if item.get("artists") else None,
             ))
         return tracks
 
@@ -340,6 +369,106 @@ class SpotifyAPI:
             except Exception:
                 pass
 
+        return tracks
+
+    def toggle_shuffle(self, state: bool) -> None:
+        self._sp.shuffle(state)
+
+    def set_repeat(self, state: str) -> None:
+        self._sp.repeat(state)
+
+    def like_track(self, track_id: str) -> None:
+        self._sp.current_user_saved_tracks_add([track_id])
+
+    def unlike_track(self, track_id: str) -> None:
+        self._sp.current_user_saved_tracks_delete([track_id])
+
+    def is_track_liked(self, track_id: str) -> bool:
+        result = self._sp.current_user_saved_tracks_contains([track_id])
+        return bool(result and result[0])
+
+    def add_to_queue(self, track_id: str, device_id: str | None = None) -> None:
+        self._sp.add_to_queue(f"spotify:track:{track_id}", device_id=device_id)
+
+    def liked_tracks(self, limit: int = 50) -> list[Track]:
+        result = self._sp.current_user_saved_tracks(limit=limit)
+        tracks: list[Track] = []
+        for item in result.get("items", []):
+            t = item.get("track")
+            if not t:
+                continue
+            artists = ", ".join(a["name"] for a in t["artists"])
+            artist_id = t["artists"][0]["id"] if t.get("artists") else None
+            images = t["album"].get("images", [])
+            cover = images[0]["url"] if images else None
+            tracks.append(Track(
+                id=t["id"],
+                name=t["name"],
+                artist=artists,
+                album=t["album"]["name"],
+                duration_ms=t["duration_ms"],
+                cover_url=cover,
+                artist_id=artist_id,
+            ))
+        return tracks
+
+    def get_artist_full(self, artist_id: str) -> ArtistInfo:
+        artist = self._sp.artist(artist_id)
+        try:
+            market = self._sp.current_user().get("country", "US")
+        except Exception:
+            market = "US"
+        top_result = self._sp.artist_top_tracks(artist_id, country=market)
+        images = artist.get("images", [])
+        image_url = images[0]["url"] if images else None
+        tracks: list[Track] = []
+        for t in top_result.get("tracks", []):
+            if not t:
+                continue
+            arts = ", ".join(a["name"] for a in t.get("artists", []))
+            imgs = t.get("album", {}).get("images", [])
+            cover = imgs[0]["url"] if imgs else None
+            tracks.append(Track(
+                id=t["id"],
+                name=t["name"],
+                artist=arts,
+                album=t.get("album", {}).get("name", ""),
+                duration_ms=t.get("duration_ms", 0),
+                cover_url=cover,
+                artist_id=artist_id,
+            ))
+        return ArtistInfo(
+            id=artist_id,
+            name=artist["name"],
+            genres=artist.get("genres", [])[:3],
+            followers=artist.get("followers", {}).get("total", 0),
+            popularity=artist.get("popularity", 0),
+            image_url=image_url,
+            top_tracks=tracks,
+        )
+
+    def artist_top_tracks_by_id(self, artist_id: str) -> list[Track]:
+        try:
+            market = self._sp.current_user().get("country", "US")
+        except Exception:
+            market = "US"
+        result = self._sp.artist_top_tracks(artist_id, country=market)
+        tracks: list[Track] = []
+        for t in result.get("tracks", []):
+            if not t:
+                continue
+            arts = ", ".join(a["name"] for a in t.get("artists", []))
+            imgs = t.get("album", {}).get("images", [])
+            cover = imgs[0]["url"] if imgs else None
+            tracks.append(Track(
+                id=t["id"],
+                name=t["name"],
+                artist=arts,
+                album=t.get("album", {}).get("name", ""),
+                duration_ms=t.get("duration_ms", 0),
+                cover_url=cover,
+                artist_id=artist_id,
+            ))
         return tracks
 
     def recently_played(self, limit: int = 20) -> list[Track]:

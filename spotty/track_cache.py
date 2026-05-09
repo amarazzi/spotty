@@ -20,6 +20,7 @@ def save(track: Track) -> None:
             "album": track.album,
             "duration_ms": track.duration_ms,
             "cover_url": track.cover_url,
+            "artist_id": track.artist_id,
         }))
     except Exception:
         pass
@@ -35,6 +36,7 @@ def load() -> Track | None:
             album=data["album"],
             duration_ms=data["duration_ms"],
             cover_url=data.get("cover_url"),
+            artist_id=data.get("artist_id"),
             is_playing=False,
             progress_ms=0,
         )

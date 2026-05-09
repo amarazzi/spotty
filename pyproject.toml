@@ -16,6 +16,7 @@ dependencies = [
     "rich-pixels>=3.0.0",
     "textual-image>=0.12.0",
     "syncedlyrics>=0.4.0",
+    "pychromecast>=14.0.0",
 ]
 
 [project.scripts]

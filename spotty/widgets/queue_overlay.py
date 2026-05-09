@@ -10,6 +10,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, ListItem, ListView
 
 from spotty.api import SpotifyAPI, Track
+from spotty.messages import AddToQueue
 
 
 class QueueOverlay(ModalScreen):
@@ -17,6 +18,7 @@ class QueueOverlay(ModalScreen):
         Binding("escape", "dismiss", "Close", show=False),
         Binding("j", "cursor_down", "", show=False),
         Binding("k", "cursor_up", "", show=False),
+        Binding("a", "add_to_queue", "", show=False),
     ]
 
     def __init__(self, api: SpotifyAPI, current_track_id: str | None = None, **kwargs) -> None:
@@ -24,6 +26,7 @@ class QueueOverlay(ModalScreen):
         self.api = api
         self._current_track_id = current_track_id
         self._tracks: list[Track] = []
+        self._is_recs: bool = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-container"):
@@ -39,6 +42,11 @@ class QueueOverlay(ModalScreen):
 
     def action_cursor_up(self) -> None:
         self.query_one(ListView).action_cursor_up()
+
+    def action_add_to_queue(self) -> None:
+        idx = self.query_one(ListView).index
+        if idx is not None and 0 <= idx < len(self._tracks):
+            self.post_message(AddToQueue(self._tracks[idx].id))
 
     @work(thread=True, exclusive=True, name="queue")
     def _load(self) -> None:
@@ -60,6 +68,7 @@ class QueueOverlay(ModalScreen):
             self.query_one("#modal-hint", Label).update("[dim]Nothing upcoming[/dim]")
             return
 
+        self._is_recs = is_recs
         if is_recs:
             self.query_one("#modal-title", Label).update(" Recommended")
             self.query_one("#modal-hint", Label).update(
@@ -83,6 +92,7 @@ class QueueOverlay(ModalScreen):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         idx = self.query_one(ListView).index
         if idx is not None and 0 <= idx < len(self._tracks):
-            self.dismiss(self._tracks[idx])
+            remaining = self._tracks[idx + 1:]
+            self.dismiss((self._tracks[idx], remaining, self._is_recs))
         else:
             self.dismiss(None)
