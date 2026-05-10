@@ -17,6 +17,7 @@ dependencies = [
     "textual-image>=0.12.0",
     "syncedlyrics>=0.4.0",
     "pychromecast>=14.0.0",
+    "pyobjc-framework-MediaPlayer>=12.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]

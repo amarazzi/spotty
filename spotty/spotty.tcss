@@ -213,3 +213,44 @@ LikedSongsOverlay, ArtistOverlay, PlaylistTracksOverlay, HelpOverlay, DevicesOve
     padding: 1 2;
     color: #B3B3B3;
 }
+
+/* ── Toasts ── */
+ToastRack {
+    align: center bottom;
+}
+
+ToastHolder {
+    align-horizontal: center;
+    width: 1fr;
+    height: auto;
+}
+
+Toast {
+    width: auto;
+    max-width: 55;
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 0 2;
+    background: #1e1e1e;
+    border: round #3a3a3a;
+    color: #e0e0e0;
+}
+
+Toast.-information {
+    border: round #1DB954;
+}
+
+Toast.-warning {
+    border: round #FFC107;
+    color: #ffffff;
+}
+
+Toast.-error {
+    border: round #E22134;
+    color: #ffffff;
+}
+
+.toast--title {
+    text-style: bold;
+    color: #ffffff;
+}

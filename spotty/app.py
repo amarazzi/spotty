@@ -14,6 +14,7 @@ from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installe
 from spotty import track_cache
 from spotty import cast_helper
 from spotty import librespot_bridge as _lb
+from spotty import media_keys
 from spotty.widgets.album_tracks_overlay import AlbumTracksOverlay
 from spotty.widgets.artist_overlay import ArtistOverlay
 from spotty.widgets.devices_overlay import DevicesOverlay
@@ -78,6 +79,11 @@ class SpottyApp(App):
     def on_mount(self) -> None:
         self._load_initial_state()
         self._connect_spotifyd()
+        media_keys.setup(
+            on_play_pause=lambda: self.call_from_thread(self.action_play_pause),
+            on_next=lambda: self.call_from_thread(self.action_next_track),
+            on_prev=lambda: self.call_from_thread(self.action_previous_track),
+        )
 
     @work(thread=True, exclusive=True, name="init-state")
     def _load_initial_state(self) -> None:
@@ -113,6 +119,13 @@ class SpottyApp(App):
         if track:
             self._last_liked_track_id = track.id
             self._fetch_liked(track.id)
+            media_keys.update_now_playing(
+                title=track.name,
+                artist=track.artist,
+                duration_ms=track.duration_ms,
+                progress_ms=track.progress_ms,
+                is_playing=track.is_playing,
+            )
         self.set_interval(3, self._refresh)
 
     # ------------------------------------------------------------------
@@ -142,6 +155,15 @@ class SpottyApp(App):
                 self._device_id = self.api._last_device_id
         else:
             track = track_cache.load()
+
+        if track:
+            media_keys.update_now_playing(
+                title=track.name,
+                artist=track.artist,
+                duration_ms=track.duration_ms,
+                progress_ms=track.progress_ms,
+                is_playing=track.is_playing,
+            )
 
         def _apply(t):
             np = self.query_one(NowPlaying)
