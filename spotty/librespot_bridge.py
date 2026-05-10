@@ -57,7 +57,7 @@ class _StreamHandler(BaseHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
                 self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError, OSError):
+        except (BrokenPipeError, ConnectionResetError, OSError, ValueError):
             pass
 
     def log_message(self, *args):
@@ -156,22 +156,44 @@ class LibrespotBridge:
 
         return f"http://{self._local_ip()}:{self._port}/stream.mp3"
 
-    def stop(self) -> None:
-        if self._server:
-            self._server.shutdown()
-            self._server = None
+    def force_stop(self) -> None:
+        """Non-blocking stop for process exit — skips server.shutdown() since daemon threads
+        die with the process anyway."""
+        if self._server and hasattr(self._server, "audio_pipe"):
+            try:
+                self._server.audio_pipe.close()
+            except Exception:
+                pass
         for proc in (self._ffmpeg, self._librespot):
             if proc:
                 try:
-                    proc.terminate()
-                    proc.wait(timeout=3)
+                    proc.kill()
                 except Exception:
-                    try:
-                        proc.kill()
-                    except Exception:
-                        pass
+                    pass
         self._ffmpeg = None
         self._librespot = None
+        self._server = None
+
+    def stop(self) -> None:
+        # Close the audio pipe first: this immediately raises OSError in any blocking
+        # pipe.read() inside the HTTP handler, which is caught and exits the handler,
+        # allowing serve_forever() to resume and shutdown() to return promptly.
+        if self._server and hasattr(self._server, "audio_pipe"):
+            try:
+                self._server.audio_pipe.close()
+            except Exception:
+                pass
+        for proc in (self._ffmpeg, self._librespot):
+            if proc:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        self._ffmpeg = None
+        self._librespot = None
+        if self._server:
+            self._server.shutdown()
+            self._server = None
 
     @staticmethod
     def _free_port() -> int:

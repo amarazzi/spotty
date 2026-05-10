@@ -134,15 +134,11 @@ LikedSongsOverlay, ArtistOverlay, PlaylistTracksOverlay, HelpOverlay, DevicesOve
 
 #search-results > ListItem:hover,
 #playlist-list > ListItem:hover,
-#home-list > ListItem:hover {
-    background: #1a1a1a;
-    color: #B3B3B3;
-}
-
-#search-results > ListItem.--highlight,
-#playlist-list > ListItem.--highlight,
-#home-list > ListItem.--highlight {
-    background: #1a1a1a;
+#home-list > ListItem:hover,
+#search-results > ListItem.-highlight,
+#playlist-list > ListItem.-highlight,
+#home-list > ListItem.-highlight {
+    background: #2a2a2a;
     color: #ffffff;
     border-left: tall #1DB954;
 }

@@ -68,6 +68,8 @@ class SpottyApp(App):
         self._last_liked_track_id: str | None = None
         self._soon_timer = None
         self._active_bridge: _lb.LibrespotBridge | None = None
+        self._cast_info = None
+        self._stream_url: str | None = None
         self._link_proc = None
 
     def compose(self) -> ComposeResult:
@@ -132,6 +134,12 @@ class SpottyApp(App):
             self._is_playing = track.is_playing
             if track.volume_percent is not None:
                 self._volume = track.volume_percent
+            # Sync _device_id from Spotify's active device, but only when the bridge
+            # is not active — while casting, _device_id is managed by _bridge_cast_bg
+            # and must not be overwritten by transient Spotify state (e.g. after a pause
+            # Spotify may report a different device as "last active").
+            if self.api._last_device_id and self._active_bridge is None:
+                self._device_id = self.api._last_device_id
         else:
             track = track_cache.load()
 
@@ -189,11 +197,11 @@ class SpottyApp(App):
 
     @work(thread=True, name="play-pause")
     def _play_pause_bg(self, is_playing: bool) -> None:
-        # No device_id — pause/resume always targets the currently active device
+        did = self._device_id
         if is_playing:
-            self._safe_api(lambda: self.api.pause())
+            self._safe_api(lambda: self.api.pause(device_id=did))
         else:
-            self._safe_api(lambda: self.api.resume())
+            self._safe_api(lambda: self.api.resume(device_id=did))
 
     def action_next_track(self) -> None:
         if not self._connected:
@@ -204,10 +212,23 @@ class SpottyApp(App):
         did = self._device_id
         self._next_bg(did)
         self.set_timer(1.2, lambda: self._check_skipped(prev_id))
+        # When casting via bridge, Google Home drops the stream during librespot's
+        # track transition gap. Re-cast after a short delay to reconnect it.
+        if self._active_bridge and self._cast_info and self._stream_url:
+            self.set_timer(2.5, lambda: self._recast_bg(self._cast_info, self._stream_url))
 
     @work(thread=True, name="next")
     def _next_bg(self, device_id: str | None) -> None:
         self._safe_api(lambda: self.api.next_track(device_id=device_id))
+
+    @work(thread=True, name="recast")
+    def _recast_bg(self, cast_info, stream_url: str) -> None:
+        if not self._active_bridge:
+            return
+        try:
+            cast_helper.cast_url(cast_info, stream_url)
+        except Exception:
+            pass
 
     def action_previous_track(self) -> None:
         if not self._connected:
@@ -497,13 +518,13 @@ class SpottyApp(App):
             if "_cast_info" in device:
                 self._bridge_cast_bg(device["_cast_info"], name)
             else:
-                self._stop_bridge()
                 self._transfer_bg(device["id"], name)
 
         self.push_screen(DevicesOverlay(api=self.api), on_result)
 
     @work(thread=True, name="transfer")
     def _transfer_bg(self, device_id: str, name: str) -> None:
+        self._stop_bridge()
         try:
             self.api.transfer_playback(device_id, force_play=False)
             self._device_id = device_id
@@ -516,6 +537,8 @@ class SpottyApp(App):
         if self._active_bridge:
             self._active_bridge.stop()
             self._active_bridge = None
+        self._cast_info = None
+        self._stream_url = None
         if self._link_proc:
             try:
                 self._link_proc.kill()
@@ -600,6 +623,8 @@ class SpottyApp(App):
             return
 
         self._active_bridge = bridge
+        self._cast_info = cast_info
+        self._stream_url = url
 
         # ── Tell the Cast device to play the HTTP stream ──────────────────
         ok = cast_helper.cast_url(cast_info, url)
@@ -651,7 +676,15 @@ class SpottyApp(App):
         self.push_screen(HelpOverlay())
 
     def on_unmount(self) -> None:
-        self._stop_bridge()
+        if self._active_bridge:
+            self._active_bridge.force_stop()
+            self._active_bridge = None
+        if self._link_proc:
+            try:
+                self._link_proc.kill()
+            except Exception:
+                pass
+            self._link_proc = None
 
     # ------------------------------------------------------------------
     # spotifyd connection

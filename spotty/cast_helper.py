@@ -77,11 +77,12 @@ def wake_and_connect(cast_info, access_token: str, api, timeout: float = 30.0) -
     """
     if not _AVAILABLE or not access_token:
         return None
+    cast = None
+    zconf = None
     try:
         import zeroconf as _zc
         zconf = _zc.Zeroconf()
 
-        # Snapshot current device IDs to detect new arrivals
         try:
             before_ids = {d["id"] for d in api.available_devices()}
         except Exception:
@@ -94,7 +95,6 @@ def wake_and_connect(cast_info, access_token: str, api, timeout: float = 30.0) -
         cast.register_handler(ctrl)
         ctrl.launch_spotify(timeout=8)
 
-        # Give the Cast device a moment to register with Spotify
         time.sleep(3.0)
 
         target_words = set(cast_info.friendly_name.lower().split())
@@ -103,35 +103,40 @@ def wake_and_connect(cast_info, access_token: str, api, timeout: float = 30.0) -
         while time.monotonic() < deadline:
             try:
                 current = api.available_devices()
-
-                # 1. Name match — works even if the device ID was already known
                 for d in current:
                     dname = d.get("name", "").lower()
                     dwords = set(dname.split())
-                    if target_words & dwords:  # any word in common
-                        zconf.close()
+                    if target_words & dwords:
                         return d["id"]
-
-                # 2. Any brand-new device ID
                 for d in current:
                     if d["id"] not in before_ids:
-                        zconf.close()
                         return d["id"]
-
             except Exception:
                 pass
             time.sleep(2.5)
 
-        zconf.close()
         return None
     except Exception:
         return None
+    finally:
+        try:
+            if cast:
+                cast.disconnect(blocking=False)
+        except Exception:
+            pass
+        try:
+            if zconf:
+                zconf.close()
+        except Exception:
+            pass
 
 
 def cast_url(cast_info, url: str) -> bool:
     """Tell a Cast device to play an HTTP audio stream URL."""
     if not _AVAILABLE:
         return False
+    cast = None
+    zconf = None
     try:
         import zeroconf as _zc
         zconf = _zc.Zeroconf()
@@ -140,14 +145,22 @@ def cast_url(cast_info, url: str) -> bool:
         mc = cast.media_controller
         mc.play_media(url, "audio/mpeg")
         mc.block_until_active(timeout=10)
-        zconf.close()
         return True
     except Exception:
+        return False
+    finally:
+        # Disconnect pychromecast socket threads so they don't block process exit.
+        # The Cast device continues playing independently after disconnect.
         try:
-            zconf.close()
+            if cast:
+                cast.disconnect(blocking=False)
         except Exception:
             pass
-        return False
+        try:
+            if zconf:
+                zconf.close()
+        except Exception:
+            pass
 
 
 def get_access_token(sp_client) -> str | None:
