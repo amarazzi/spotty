@@ -13,6 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Label
 
 from spotty.api import Track
+from spotty import themes as _themes
 
 
 def _parse_lrc(text: str) -> list[tuple[int, str]]:
@@ -166,7 +167,7 @@ class LyricsOverlay(ModalScreen):
             for i, (_, text) in enumerate(self._lines):
                 line = text or "♪"
                 if i == active_idx:
-                    parts.append(f"[bold #1DB954]{line}[/]")
+                    parts.append(f"[bold {_themes.primary()}]{line}[/]")
                 else:
                     parts.append(f"[#404040]{line}[/]")
             self.query_one("#lyrics-text", Label).update("\n".join(parts))

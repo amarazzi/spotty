@@ -10,6 +10,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, ListItem, ListView
 
 from spotty.api import ArtistResult, SpotifyAPI, Track
+from spotty import themes as _themes
 
 _VIEWS = ("tracks", "artists")
 _RANGES = ("short_term", "medium_term", "long_term")
@@ -42,11 +43,12 @@ class TopOverlay(ModalScreen):
         self._load()
 
     def _hint_text(self) -> str:
+        p = _themes.primary()
         def _v(name: str) -> str:
-            return f"[bold #1DB954]{name}[/bold #1DB954]" if name == self._view else f"[dim]{name}[/dim]"
+            return f"[bold {p}]{name}[/bold {p}]" if name == self._view else f"[dim]{name}[/dim]"
 
         def _r(key: str) -> str:
-            return f"[bold #1DB954]{_RANGE_LABELS[key]}[/bold #1DB954]" if key == self._range else f"[dim]{_RANGE_LABELS[key]}[/dim]"
+            return f"[bold {p}]{_RANGE_LABELS[key]}[/bold {p}]" if key == self._range else f"[dim]{_RANGE_LABELS[key]}[/dim]"
 
         views = "  ".join(_v(v) for v in _VIEWS)
         ranges = "  ".join(_r(r) for r in _RANGES)
@@ -103,7 +105,8 @@ class TopOverlay(ModalScreen):
                     f"  [dim]· {item.artist}  {d // 60}:{d % 60:02d}[/dim]"
                 )))
             else:
-                genres = "  ".join(f"[#1DB954]{g}[/]" for g in item.genres[:2]) if item.genres else ""
+                p2 = _themes.primary()
+                genres = "  ".join(f"[{p2}]{g}[/]" for g in item.genres[:2]) if item.genres else ""
                 lv.append(ListItem(Label(
                     f"[dim]{i:2}[/dim]  [bold]{item.name}[/bold]"
                     + (f"  [dim]{genres}[/dim]" if genres else "")

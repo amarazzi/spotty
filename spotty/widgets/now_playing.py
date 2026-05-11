@@ -15,6 +15,7 @@ from textual.widget import Widget
 from textual.widgets import Label, Static
 
 from spotty.api import Track
+from spotty import themes as _themes
 
 # Try the best image renderer available, fall back gracefully.
 try:
@@ -45,13 +46,14 @@ def _render_bar(width: int, pct: int) -> str:
         return ""
     pct = max(0, min(100, pct))
     filled = int(width * pct / 100)
+    p = _themes.primary()
     if pct == 0:
         return f"[#2D2D2D]{'━' * width}[/]"
     if filled >= width:
-        return f"[#1DB954]{'━' * width}[/]"
+        return f"[{p}]{'━' * width}[/]"
     remaining = width - filled - 1
     return (
-        f"[#1DB954]{'━' * filled}[/]"
+        f"[{p}]{'━' * filled}[/]"
         f"[bold white]●[/]"
         f"[#2D2D2D]{'━' * remaining}[/]"
     )
@@ -107,8 +109,9 @@ class NowPlaying(Widget):
             return
         self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER)
         frame = _SPINNER[self._spinner_idx]
+        p = _themes.primary()
         self.query_one("#np-loading", Label).update(
-            f"[bold #1DB954]spotty[/bold #1DB954]\n\n"
+            f"[bold {p}]spotty[/bold {p}]\n\n"
             f"[dim]{frame}  Connecting to Spotify…[/dim]"
         )
 
@@ -117,11 +120,12 @@ class NowPlaying(Widget):
     # ------------------------------------------------------------------
 
     def _render_status(self) -> str:
-        shuf = "[bold #1DB954]⇌[/]" if self.shuffle else "[#383838]⇌[/]"
+        p = _themes.primary()
+        shuf = f"[bold {p}]⇌[/]" if self.shuffle else "[#383838]⇌[/]"
         if self.repeat == "track":
-            rep = "[bold #1DB954]↻¹[/]"
+            rep = f"[bold {p}]↻¹[/]"
         elif self.repeat == "context":
-            rep = "[bold #1DB954]↻[/]"
+            rep = f"[bold {p}]↻[/]"
         else:
             rep = "[#383838]↻[/]"
         like = "[bold #E8115B]♥[/]" if self.is_liked else "[#383838]♡[/]"
@@ -218,7 +222,7 @@ class NowPlaying(Widget):
 
         icon = "▶" if track.is_playing else "⏸"
         name_lbl.update(f"[bold]{icon}  {track.name}[/bold]")
-        artist_lbl.update(f"[green]{track.artist}[/green]")
+        artist_lbl.update(track.artist)
         album_lbl.update(f"[dim]{track.album}[/dim]")
 
         # Update shuffle/repeat from track state

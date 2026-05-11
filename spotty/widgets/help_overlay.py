@@ -8,6 +8,8 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Label
 
+from spotty import themes as _themes
+
 _SECTIONS = [
     ("Playback", [
         ("space",   "play / pause"),
@@ -40,6 +42,7 @@ _SECTIONS = [
     ("General", [
         ("q",       "quit"),
         ("?",       "this help"),
+        ("ctrl+t",  "cycle color theme"),
     ]),
 ]
 
@@ -58,8 +61,9 @@ class HelpOverlay(ModalScreen):
             yield Label("[dim]Esc to close[/dim]", id="modal-hint")
             with VerticalScroll(id="lyrics-scroll"):
                 lines: list[str] = []
+                p = _themes.primary()
                 for section, keys in _SECTIONS:
-                    lines.append(f"\n[bold #1DB954]{section}[/bold #1DB954]")
+                    lines.append(f"\n[bold {p}]{section}[/bold {p}]")
                     for key, desc in keys:
                         lines.append(
                             f"  [bold white]{key:<10}[/bold white]  [dim]{desc}[/dim]"
