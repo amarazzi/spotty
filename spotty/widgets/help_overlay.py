@@ -20,13 +20,15 @@ _SECTIONS = [
         ("h",       "like / unlike current track"),
     ]),
     ("Browse", [
-        ("/",       "search tracks & albums"),
+        ("/",       "search tracks, albums, playlists, artists"),
         ("o",       "playlists"),
         ("f",       "liked songs"),
         ("r",       "home / discover"),
         ("u",       "queue / recommendations"),
         ("l",       "lyrics  (synced if available)"),
         ("i",       "artist info + top tracks"),
+        ("b",       "browse current album"),
+        ("t",       "your top tracks / artists"),
         ("d",       "devices  (Spotify Connect)"),
     ]),
     ("Inside any overlay", [

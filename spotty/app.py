@@ -27,6 +27,7 @@ from spotty.widgets.playlist_tracks_overlay import PlaylistTracksOverlay
 from spotty.widgets.playlists_overlay import PlaylistsOverlay
 from spotty.widgets.queue_overlay import QueueOverlay
 from spotty.widgets.search_overlay import SearchOverlay
+from spotty.widgets.top_overlay import TopOverlay
 
 
 class SpottyApp(App):
@@ -53,6 +54,8 @@ class SpottyApp(App):
         Binding("left_square_bracket", "seek_back", "Seek-"),
         Binding("right_square_bracket", "seek_forward", "Seek+"),
         Binding("d", "devices", "Devices"),
+        Binding("b", "album", "Album"),
+        Binding("t", "top", "Top"),
         Binding("question_mark", "help", "Help"),
     ]
 
@@ -400,7 +403,7 @@ class SpottyApp(App):
             pass
 
     def action_search(self) -> None:
-        from spotty.api import Playlist as _Playlist
+        from spotty.api import ArtistResult as _ArtistResult, Playlist as _Playlist
 
         def on_search_result(result) -> None:
             if not result:
@@ -409,6 +412,11 @@ class SpottyApp(App):
                 self._open_album_tracks(result)
             elif isinstance(result, _Playlist):
                 self._open_playlist_tracks(result)
+            elif isinstance(result, _ArtistResult):
+                def on_track(t) -> None:
+                    if t:
+                        self._play_track_bg(t.id)
+                self.push_screen(ArtistOverlay(api=self.api, artist_id=result.id, artist_name=result.name), on_track)
             else:
                 self._play_track_bg(result.id)
 
@@ -531,6 +539,32 @@ class SpottyApp(App):
             if t:
                 self._play_track_bg(t.id)
         self.push_screen(ArtistOverlay(api=self.api, artist_id=artist_id, artist_name=artist_name or ""), on_result)
+
+    def action_album(self) -> None:
+        track = track_cache.load()
+        if not track:
+            track = self._safe_api(self.api.current_track, silent=True)
+        if not track or not track.album_id:
+            self.notify("No album info available", timeout=2)
+            return
+        album = Album(id=track.album_id, name=track.album, artist=track.artist, total=0)
+        self._open_album_tracks(album)
+
+    def action_top(self) -> None:
+        from spotty.api import ArtistResult as _ArtistResult
+
+        def on_result(result) -> None:
+            if not result:
+                return
+            if isinstance(result, _ArtistResult):
+                def on_track(t) -> None:
+                    if t:
+                        self._play_track_bg(t.id)
+                self.push_screen(ArtistOverlay(api=self.api, artist_id=result.id, artist_name=result.name), on_track)
+            else:
+                self._play_track_bg(result.id)
+
+        self.push_screen(TopOverlay(api=self.api), on_result)
 
     def action_devices(self) -> None:
         def on_result(device) -> None:

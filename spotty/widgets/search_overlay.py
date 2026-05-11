@@ -1,4 +1,4 @@
-"""Search modal — / to open, Tab to cycle tracks / albums / playlists."""
+"""Search modal — / to open, Tab to cycle tracks / albums / playlists / artists."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, ListItem, ListView
 
-from spotty.api import Album, Playlist, SpotifyAPI, Track
+from spotty.api import Album, ArtistResult, Playlist, SpotifyAPI, Track
 from spotty.messages import AddToQueue
 
-_MODES = ("tracks", "albums", "playlists")
+_MODES = ("tracks", "albums", "playlists", "artists")
 
 
 class SearchOverlay(ModalScreen):
@@ -27,7 +27,7 @@ class SearchOverlay(ModalScreen):
     def __init__(self, api: SpotifyAPI, **kwargs) -> None:
         super().__init__(**kwargs)
         self.api = api
-        self._results: list[Track | Album | Playlist] = []
+        self._results: list[Track | Album | Playlist | ArtistResult] = []
         self._mode = "tracks"
 
     def compose(self) -> ComposeResult:
@@ -46,7 +46,8 @@ class SearchOverlay(ModalScreen):
                 return f"[bold #1DB954]{name}[/bold #1DB954]"
             return f"[dim]{name}[/dim]"
         tabs = "  ".join(_tab(m) for m in _MODES)
-        return f"[dim]Tab ·[/dim]  {tabs}  [dim]· Enter · a to queue[/dim]"
+        suffix = "[dim]· Enter · a to queue[/dim]" if self._mode != "artists" else "[dim]· Enter to browse[/dim]"
+        return f"[dim]Tab ·[/dim]  {tabs}  {suffix}"
 
     def action_toggle_mode(self) -> None:
         idx = (_MODES.index(self._mode) + 1) % len(_MODES)
@@ -83,11 +84,13 @@ class SearchOverlay(ModalScreen):
     def _search(self, query: str) -> None:
         try:
             if self._mode == "tracks":
-                results: list[Track | Album | Playlist] = self.api.search_tracks(query, limit=20)
+                results: list[Track | Album | Playlist | ArtistResult] = self.api.search_tracks(query, limit=20)
             elif self._mode == "albums":
                 results = self.api.search_albums(query, limit=15)
-            else:
+            elif self._mode == "playlists":
                 results = self.api.search_playlists(query, limit=15)
+            else:
+                results = self.api.search_artists(query, limit=15)
         except Exception:
             self.app.call_from_thread(
                 self.query_one("#search-hint", Label).update,
@@ -97,7 +100,7 @@ class SearchOverlay(ModalScreen):
         self._results = results
         self.app.call_from_thread(self._populate, results)
 
-    def _populate(self, results: list[Track | Album | Playlist]) -> None:
+    def _populate(self, results: list[Track | Album | Playlist | ArtistResult]) -> None:
         lv = self.query_one(ListView)
         lv.clear()
         if not results:
@@ -115,6 +118,12 @@ class SearchOverlay(ModalScreen):
                 lv.append(ListItem(Label(
                     f"[#1DB954]▣[/#1DB954]  [bold]{item.name}[/bold]"
                     f"  [dim]· {item.artist}  {item.total} tracks[/dim]"
+                )))
+            elif isinstance(item, ArtistResult):
+                genres = "  ".join(item.genres[:2]) if item.genres else ""
+                lv.append(ListItem(Label(
+                    f"[#1DB954]◉[/#1DB954]  [bold]{item.name}[/bold]"
+                    + (f"  [dim]{genres}[/dim]" if genres else "")
                 )))
             else:  # Playlist
                 lv.append(ListItem(Label(
