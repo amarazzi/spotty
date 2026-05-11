@@ -9,7 +9,6 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 
 from spotty.api import Album, SpotifyAPI
-from spotty import themes as _themes
 from spotty.messages import AddToQueue
 from spotty.spotifyd_manager import DEVICE_NAME as _SPOTIFYD_DEVICE, is_installed as _spotifyd_installed
 from spotty import track_cache
@@ -33,7 +32,7 @@ from spotty.widgets.top_overlay import TopOverlay
 
 class SpottyApp(App):
     TITLE = "spotty"
-    CSS_PATH = ["spotty.tcss", str(_themes.THEME_CSS_PATH)]
+    CSS_PATH = "spotty.tcss"
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
@@ -57,12 +56,10 @@ class SpottyApp(App):
         Binding("d", "devices", "Devices"),
         Binding("b", "album", "Album"),
         Binding("t", "top", "Top"),
-        Binding("ctrl+t", "theme", "Theme"),
         Binding("question_mark", "help", "Help"),
     ]
 
     def __init__(self, api: SpotifyAPI) -> None:
-        _themes.init()  # write theme CSS before Textual reads CSS_PATH
         super().__init__()
         self.api = api
         self._volume = 50
@@ -730,16 +727,6 @@ class SpottyApp(App):
             self.call_from_thread(
                 self.notify, f"Transfer error: {e}", severity="error", timeout=4
             )
-
-    def action_theme(self) -> None:
-        names = [t.name for t in _themes.THEMES]
-        idx = (names.index(_themes.current().name) + 1) % len(names)
-        theme = _themes.THEMES[idx]
-        _themes._set(theme)
-        _themes.write_css(theme)
-        _themes.save(theme.name)
-        self.refresh_css()
-        self.notify(f"Theme: {theme.label}", timeout=2)
 
     def action_help(self) -> None:
         self.push_screen(HelpOverlay())

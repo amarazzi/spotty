@@ -17,7 +17,6 @@ from textual.widgets import Label, ListItem, ListView
 
 from spotty.api import Album, Playlist, SpotifyAPI, Track
 from spotty.messages import AddToQueue
-from spotty import themes as _themes
 
 
 class HomeOverlay(ModalScreen):
@@ -130,7 +129,7 @@ class HomeOverlay(ModalScreen):
             idx = len(self._items)
             self._header_indices.add(idx)
             self._items.append(None)
-            lv.append(ListItem(Label(f"[bold {_themes.primary()}]{title}[/bold {_themes.primary()}]")))
+            lv.append(ListItem(Label(f"[bold #1DB954]{title}[/bold #1DB954]")))
 
         def _playlist_row(p: Playlist) -> None:
             self._items.append(p)

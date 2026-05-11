@@ -11,7 +11,6 @@ from textual.widgets import Label, ListItem, ListView
 
 from spotty.api import SpotifyAPI, Track
 from spotty.messages import AddToQueue
-from spotty import themes as _themes
 
 
 class QueueOverlay(ModalScreen):
@@ -80,7 +79,7 @@ class QueueOverlay(ModalScreen):
             self.query_one("#modal-hint", Label).update(
                 f"[dim]{len(tracks)} tracks — Enter to play[/dim]"
             )
-            icon = f"[{_themes.primary()}]♪[/{_themes.primary()}]"
+            icon = "[#1DB954]♪[/#1DB954]"
 
         for t in tracks:
             d = t.duration_ms // 1000

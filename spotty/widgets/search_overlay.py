@@ -11,7 +11,6 @@ from textual.widgets import Input, Label, ListItem, ListView
 
 from spotty.api import Album, ArtistResult, Playlist, SpotifyAPI, Track
 from spotty.messages import AddToQueue
-from spotty import themes as _themes
 
 _MODES = ("tracks", "albums", "playlists", "artists")
 
@@ -42,10 +41,9 @@ class SearchOverlay(ModalScreen):
         self.query_one(Input).focus()
 
     def _hint_text(self) -> str:
-        p = _themes.primary()
         def _tab(name: str) -> str:
             if name == self._mode:
-                return f"[bold {p}]{name}[/bold {p}]"
+                return f"[bold #1DB954]{name}[/bold #1DB954]"
             return f"[dim]{name}[/dim]"
         tabs = "  ".join(_tab(m) for m in _MODES)
         suffix = "[dim]· Enter · a to queue[/dim]" if self._mode != "artists" else "[dim]· Enter to browse[/dim]"
@@ -109,28 +107,27 @@ class SearchOverlay(ModalScreen):
             self.query_one("#search-hint", Label).update("[dim]No results[/dim]")
             return
         self.query_one("#search-hint", Label).update(self._hint_text())
-        p = _themes.primary()
         for item in results:
             if isinstance(item, Track):
                 d = item.duration_ms // 1000
                 lv.append(ListItem(Label(
-                    f"[{p}]♪[/{p}]  [bold]{item.name}[/bold]"
+                    f"[#1DB954]♪[/#1DB954]  [bold]{item.name}[/bold]"
                     f"  [dim]· {item.artist}  {d // 60}:{d % 60:02d}[/dim]"
                 )))
             elif isinstance(item, Album):
                 lv.append(ListItem(Label(
-                    f"[{p}]▣[/{p}]  [bold]{item.name}[/bold]"
+                    f"[#1DB954]▣[/#1DB954]  [bold]{item.name}[/bold]"
                     f"  [dim]· {item.artist}  {item.total} tracks[/dim]"
                 )))
             elif isinstance(item, ArtistResult):
                 genres = "  ".join(item.genres[:2]) if item.genres else ""
                 lv.append(ListItem(Label(
-                    f"[{p}]◉[/{p}]  [bold]{item.name}[/bold]"
+                    f"[#1DB954]◉[/#1DB954]  [bold]{item.name}[/bold]"
                     + (f"  [dim]{genres}[/dim]" if genres else "")
                 )))
             else:  # Playlist
                 lv.append(ListItem(Label(
-                    f"[{p}]≡[/{p}]  [bold]{item.name}[/bold]"
+                    f"[#1DB954]≡[/#1DB954]  [bold]{item.name}[/bold]"
                     f"  [dim]{item.total} tracks[/dim]"
                 )))
         lv.focus()

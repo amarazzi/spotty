@@ -17,7 +17,6 @@ from textual.widgets import Label, ListItem, ListView, Static
 
 from spotty.api import ArtistInfo, SpotifyAPI, Track
 from spotty.messages import AddToQueue
-from spotty import themes as _themes
 
 try:
     from textual_image.widget import AutoImage as _AutoImage
@@ -57,8 +56,7 @@ def _fetch_wiki_bio(artist_name: str) -> str:
 def _pop_bar(popularity: int) -> str:
     filled = popularity // 10
     empty = 10 - filled
-    p = _themes.primary()
-    return f"[{p}]{'█' * filled}[/][#383838]{'░' * empty}[/]"
+    return f"[#1DB954]{'█' * filled}[/][#383838]{'░' * empty}[/]"
 
 
 class ArtistOverlay(ModalScreen):
@@ -126,9 +124,8 @@ class ArtistOverlay(ModalScreen):
             "[dim]Enter to play  ·  a to queue[/dim]"
         )
 
-        p = _themes.primary()
         genres = "  ".join(
-            f"[bold {p}]{g}[/]" for g in info.genres
+            f"[bold #1DB954]{g}[/]" for g in info.genres
         ) if info.genres else "[dim]—[/dim]"
         self.query_one("#artist-genres", Label).update(genres)
 

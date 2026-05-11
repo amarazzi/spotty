@@ -11,7 +11,6 @@ from textual.widgets import Label, ListItem, ListView
 
 from spotty.api import SpotifyAPI
 from spotty import cast_helper
-from spotty import themes as _themes
 
 _TYPE_ICON = {
     "Computer": "⊡",
@@ -111,11 +110,10 @@ class DevicesOverlay(ModalScreen):
             vol_str = f"  [dim]{vol}%[/dim]" if vol is not None else ""
 
             if is_active:
-                p = _themes.primary()
                 label = (
-                    f"[bold {p}]{icon}  {name}[/bold {p}]"
-                    f"  [dim {p}]{dtype}[/dim {p}]"
-                    f"  [{p}]← playing[/{p}]{vol_str}"
+                    f"[bold #1DB954]{icon}  {name}[/bold #1DB954]"
+                    f"  [dim #1DB954]{dtype}[/dim #1DB954]"
+                    f"  [#1DB954]← playing[/#1DB954]{vol_str}"
                 )
             elif is_cast:
                 label = (
