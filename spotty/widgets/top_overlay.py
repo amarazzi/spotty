@@ -79,10 +79,10 @@ class TopOverlay(ModalScreen):
                 results: list[Track | ArtistResult] = self.api.top_tracks(time_range=self._range)
             else:
                 results = self.api.top_artists(time_range=self._range)
-        except Exception:
+        except Exception as e:
             self.app.call_from_thread(
                 self.query_one("#modal-hint", Label).update,
-                "[red]Failed to load[/red]",
+                f"[red]{e}[/red]",
             )
             return
         self._results = results

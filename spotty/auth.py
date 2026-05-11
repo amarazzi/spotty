@@ -23,7 +23,9 @@ SCOPES = " ".join([
     "playlist-read-private",
     "playlist-read-collaborative",
     "user-library-read",
+    "user-library-modify",
     "user-read-recently-played",
+    "user-top-read",
 ])
 
 CACHE_PATH = Path.home() / ".cache" / "spotty" / "token"
